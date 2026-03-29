@@ -59,7 +59,7 @@ Write-Host "Setup complete!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Next steps:"
 Write-Host "1. Copy your 4 PDF resumes to the 'resumes' folder"
-Write-Host "2. Run '.\run.ps1' to start the app"
+Write-Host "2. Run '.\start.ps1' to start the app"
 Write-Host "3. Open Settings and configure your email + LinkedIn cookie"
 Write-Host "============================================" -ForegroundColor Green
 Read-Host "Press Enter to exit"

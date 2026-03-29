@@ -64,7 +64,7 @@ echo Setup complete!
 echo.
 echo Next steps:
 echo 1. Copy your 4 PDF resumes to the 'resumes' folder
-echo 2. Run 'run.bat' to start the app
+echo 2. Run 'start.bat' to start the app
 echo 3. Open Settings and configure your email + LinkedIn cookie
 echo ============================================
 pause

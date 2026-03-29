@@ -27,14 +27,14 @@ Automated job application assistant for Randy Walker — built with Python, Flas
 
 ### Windows (PowerShell)
 ```powershell
-.\setup.ps1     # First-time setup
-.\run.ps1       # Start the app
+.\install.ps1   # First-time setup
+.\start.ps1     # Start the app
 ```
 
 ### Windows (Command Prompt)
 ```
-setup.bat     # First-time setup
-run.bat       # Start the app
+install.bat     # First-time setup
+start.bat       # Start the app
 ```
 
 ### Manual
