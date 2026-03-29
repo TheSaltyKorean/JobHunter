@@ -6,16 +6,42 @@ Write-Host ""
 # Check Python (Windows Store alias returns non-zero and "was not found" text)
 $pyCheck = python --version 2>&1
 if ($LASTEXITCODE -ne 0 -or "$pyCheck" -match "not found|not recognized") {
-    Write-Host "ERROR: Python not found." -ForegroundColor Red
+    Write-Host "Python not found. Installing automatically..." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "Install Python 3.10+ from https://www.python.org/downloads/" -ForegroundColor Yellow
-    Write-Host "IMPORTANT: Check 'Add Python to PATH' during installation!" -ForegroundColor Yellow
-    Write-Host ""
-    Write-Host "After installing, close and reopen PowerShell, then run .\install.ps1 again."
-    Read-Host "Press Enter to exit"
-    exit 1
+
+    $installerUrl = "https://www.python.org/ftp/python/3.12.9/python-3.12.9-amd64.exe"
+    $installerPath = "$env:TEMP\python-installer.exe"
+
+    Write-Host "Downloading Python 3.12..."
+    try {
+        Invoke-WebRequest -Uri $installerUrl -OutFile $installerPath -UseBasicParsing
+    } catch {
+        Write-Host "ERROR: Failed to download Python installer." -ForegroundColor Red
+        Write-Host "Please install manually from https://www.python.org/downloads/"
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+
+    Write-Host "Installing Python (this may take a minute)..."
+    Start-Process -FilePath $installerPath -ArgumentList "/quiet", "InstallAllUsers=0", "PrependPath=1", "Include_pip=1" -Wait
+    Remove-Item $installerPath -Force -ErrorAction SilentlyContinue
+
+    # Refresh PATH so we can use python immediately
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+
+    # Verify it worked
+    $pyCheck = python --version 2>&1
+    if ($LASTEXITCODE -ne 0 -or "$pyCheck" -match "not found|not recognized") {
+        Write-Host "ERROR: Python installation did not complete successfully." -ForegroundColor Red
+        Write-Host "Please install manually from https://www.python.org/downloads/"
+        Write-Host "Make sure to check 'Add Python to PATH' during install."
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+    Write-Host "[OK] $pyCheck installed successfully" -ForegroundColor Green
+} else {
+    Write-Host "[OK] $pyCheck" -ForegroundColor Green
 }
-Write-Host "[OK] $pyCheck" -ForegroundColor Green
 
 # Install pip dependencies
 Write-Host ""
