@@ -114,6 +114,28 @@ def detect_platform(url: str) -> str:
     return 'unknown'
 
 
+def detect_company_platform_key(url: str) -> str:
+    """
+    For ATS platforms that use per-company instances (Workday, SuccessFactors, etc.),
+    return a company-specific key like 'workday_microsoft' or 'successfactors_sap'.
+    Falls back to the generic platform key if no company subdomain is detected.
+    """
+    from urllib.parse import urlparse
+    platform = detect_platform(url)
+    if platform in ('workday', 'successfactors', 'taleo', 'icims'):
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ''
+        # Extract company name from subdomain
+        # e.g., 'microsoft.wd1.myworkdayjobs.com' → 'microsoft'
+        # e.g., 'jobs-careers-microsoft.icims.com' → 'microsoft'
+        parts = hostname.split('.')
+        if len(parts) > 2:
+            company = parts[0].replace('jobs-', '').replace('careers-', '').replace('career-', '')
+            if company and company not in ('www', 'jobs', 'career', 'careers', 'apply'):
+                return f"{platform}_{company}"
+    return platform
+
+
 def get_credentials(platform: str) -> dict:
     """
     Get stored credentials for a platform.
