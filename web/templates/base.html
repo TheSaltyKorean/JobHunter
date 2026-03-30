@@ -20,6 +20,7 @@
       <a href="{{ url_for('add_url') }}" class="nav-link {% if request.endpoint=='add_url' %}active{% endif %}">Add URL</a>
       <a href="{{ url_for('answer') }}" class="nav-link {% if request.endpoint=='answer' %}active{% endif %}">Answer</a>
       <a href="{{ url_for('settings') }}" class="nav-link {% if request.endpoint=='settings' %}active{% endif %}">&#x2699; Settings</a>
+      <a href="#" class="nav-link" onclick="if(confirm('Stop the server?')) fetch('/api/shutdown').then(()=>document.body.innerHTML='<h2 style=\'text-align:center;margin-top:100px\'>Server stopped.</h2>'); return false;" style="color:#e53e3e">Stop</a>
     </div>
   </nav>
 

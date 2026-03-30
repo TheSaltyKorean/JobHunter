@@ -88,25 +88,26 @@ async def search_linkedin(keywords: list, location: str,
 
     jobs = []
     query = ' '.join(keywords)
-    encoded_query = query.replace(' ', '%20')
-    encoded_location = location.replace(' ', '%20').replace(',', '%2C')
+    from urllib.parse import quote_plus
+    encoded_query = quote_plus(query)
+    encoded_location = quote_plus(location)
 
-    # LinkedIn job search URL – filters for full-time, experience level 4 (Director), 5 (VP+)
+    # LinkedIn public guest search URL (works without login)
     url = (
         f"https://www.linkedin.com/jobs/search/"
         f"?keywords={encoded_query}"
         f"&location={encoded_location}"
         f"&f_JT=F"           # Full-time
-        f"&f_E=4%2C5"        # Director, VP level
         f"&f_TPR=r604800"    # Posted last 7 days
         f"&sortBy=DD"        # Most recent
+        f"&position=1&pageNum=0"
     )
 
     async with async_playwright() as p:
         browser, context = await _get_browser(p, headless=False)
         page = await context.new_page()
 
-        # Set cookie if provided
+        # Set cookie if provided for authenticated search
         if li_session_cookie:
             await context.add_cookies([{
                 'name': 'li_at',
@@ -114,67 +115,200 @@ async def search_linkedin(keywords: list, location: str,
                 'domain': '.linkedin.com',
                 'path': '/',
             }])
+            logger.info("LinkedIn session cookie set")
 
         try:
-            logger.info(f"Searching LinkedIn: {query} in {location}")
+            logger.info(f"Searching LinkedIn: '{query}' in '{location}'")
+            logger.info(f"URL: {url}")
             await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            await asyncio.sleep(random.uniform(2, 4))
+            await asyncio.sleep(random.uniform(3, 5))
 
-            # Check if logged out
-            if 'authwall' in page.url or 'login' in page.url:
-                logger.warning("LinkedIn requires login. Please log in the browser window.")
-                # Wait up to 60 seconds for user to log in
-                for _ in range(60):
+            current_url = page.url
+            logger.info(f"Landed on: {current_url}")
+
+            # Check if redirected to auth wall
+            if 'authwall' in current_url or 'login' in current_url or 'checkpoint' in current_url:
+                logger.warning("LinkedIn requires login. Waiting up to 90s for manual login...")
+                for i in range(90):
                     await asyncio.sleep(1)
                     if 'linkedin.com/jobs' in page.url:
+                        logger.info("Login detected, continuing search")
+                        await asyncio.sleep(2)
                         break
+                    if i == 89:
+                        logger.error("Login timeout - no login detected after 90s")
 
             # Scroll to load more results
-            for scroll in range(3):
+            for scroll in range(4):
                 await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
                 await asyncio.sleep(random.uniform(1.5, 3))
-
-            # Extract job cards
-            job_cards = await page.query_selector_all('.job-search-card, .jobs-search__results-list li')
-
-            for card in job_cards[:max_results]:
+                # Click "See more jobs" button if present
                 try:
-                    title_el = await card.query_selector('.base-search-card__title, .job-card-list__title')
-                    company_el = await card.query_selector('.base-search-card__subtitle, .job-card-container__company-name')
-                    location_el = await card.query_selector('.job-search-card__location, .job-card-container__metadata-item')
-                    link_el = await card.query_selector('a.base-card__full-link, a.job-card-list__title')
+                    see_more = await page.query_selector('button.infinite-scroller__show-more-button, button[aria-label*="more jobs"]')
+                    if see_more:
+                        await see_more.click()
+                        await asyncio.sleep(2)
+                except:
+                    pass
 
-                    title = (await title_el.inner_text()).strip() if title_el else ''
-                    company = (await company_el.inner_text()).strip() if company_el else ''
-                    loc = (await location_el.inner_text()).strip() if location_el else ''
-                    link = await link_el.get_attribute('href') if link_el else ''
+            # Try multiple selector strategies (LinkedIn changes these frequently)
+            card_selectors = [
+                'ul.jobs-search__results-list li',            # Guest/public page
+                '.job-search-card',                            # Guest page alt
+                '.jobs-search-results__list-item',             # Logged-in page
+                'div.job-card-container',                      # Logged-in alt
+                '.scaffold-layout__list-item',                 # Newer logged-in layout
+                'li[data-occludable-job-id]',                  # Data attribute approach
+                '.job-card-list',                              # Another variant
+            ]
 
-                    if not title or not link:
+            job_cards = []
+            used_selector = ''
+            for sel in card_selectors:
+                job_cards = await page.query_selector_all(sel)
+                if job_cards:
+                    used_selector = sel
+                    break
+
+            logger.info(f"Found {len(job_cards)} job cards using selector: '{used_selector}'")
+
+            if not job_cards:
+                # Log the page structure to help debug
+                page_text = await page.inner_text('body')
+                logger.warning(f"No job cards found. Page text preview: {page_text[:500]}")
+                # Try a generic fallback: find all job links
+                all_links = await page.query_selector_all('a[href*="/jobs/view/"]')
+                logger.info(f"Fallback: found {len(all_links)} links containing /jobs/view/")
+
+                # Extract jobs from raw links as last resort
+                seen_urls = set()
+                for link_el in all_links[:max_results]:
+                    try:
+                        href = await link_el.get_attribute('href') or ''
+                        if '/jobs/view/' not in href:
+                            continue
+                        clean_href = href.split('?')[0]
+                        if clean_href in seen_urls:
+                            continue
+                        seen_urls.add(clean_href)
+
+                        text = (await link_el.inner_text()).strip()
+                        if not text or len(text) < 3:
+                            continue
+
+                        if not clean_href.startswith('http'):
+                            clean_href = 'https://www.linkedin.com' + clean_href
+
+                        jobs.append({
+                            'job_id':    _make_job_id('linkedin', clean_href),
+                            'title':     text,
+                            'company':   '',
+                            'location':  location,
+                            'platform':  'linkedin',
+                            'url':       clean_href,
+                            'description': '',
+                            'posted_date': '',
+                            'salary':    '',
+                            'job_type':  'Full-time',
+                        })
+                    except Exception as e:
+                        logger.debug(f"Error parsing fallback link: {e}")
+            else:
+                # Standard card-based extraction with multiple selector options
+                title_selectors = [
+                    '.base-search-card__title',
+                    '.job-card-list__title',
+                    'a.job-card-container__link span',
+                    'a.job-card-list__title--link span',
+                    '.artdeco-entity-lockup__title span',
+                    'h3',
+                ]
+                company_selectors = [
+                    '.base-search-card__subtitle',
+                    '.job-card-container__primary-description',
+                    '.job-card-container__company-name',
+                    '.artdeco-entity-lockup__subtitle span',
+                    'h4 a',
+                    'h4',
+                ]
+                location_selectors = [
+                    '.job-search-card__location',
+                    '.job-card-container__metadata-item',
+                    '.job-card-container__metadata-wrapper li',
+                    '.artdeco-entity-lockup__caption span',
+                ]
+                link_selectors = [
+                    'a.base-card__full-link',
+                    'a.job-card-list__title',
+                    'a.job-card-container__link',
+                    'a[href*="/jobs/view/"]',
+                    'a',
+                ]
+
+                for card in job_cards[:max_results]:
+                    try:
+                        title = ''
+                        company = ''
+                        loc = ''
+                        link = ''
+
+                        for sel in title_selectors:
+                            el = await card.query_selector(sel)
+                            if el:
+                                title = (await el.inner_text()).strip()
+                                if title:
+                                    break
+
+                        for sel in company_selectors:
+                            el = await card.query_selector(sel)
+                            if el:
+                                company = (await el.inner_text()).strip()
+                                if company:
+                                    break
+
+                        for sel in location_selectors:
+                            el = await card.query_selector(sel)
+                            if el:
+                                loc = (await el.inner_text()).strip()
+                                if loc:
+                                    break
+
+                        for sel in link_selectors:
+                            el = await card.query_selector(sel)
+                            if el:
+                                link = await el.get_attribute('href') or ''
+                                if '/jobs/view/' in link:
+                                    break
+                                link = ''  # Reset if not a job link
+
+                        if not title or not link:
+                            continue
+
+                        # Clean up the URL
+                        if not link.startswith('http'):
+                            link = 'https://www.linkedin.com' + link
+                        link = link.split('?')[0]
+                        job_id = _make_job_id('linkedin', link)
+
+                        jobs.append({
+                            'job_id':    job_id,
+                            'title':     title,
+                            'company':   company,
+                            'location':  loc or location,
+                            'platform':  'linkedin',
+                            'url':       link,
+                            'description': '',
+                            'posted_date': '',
+                            'salary':    '',
+                            'job_type':  'Full-time',
+                        })
+
+                    except Exception as e:
+                        logger.debug(f"Error parsing LinkedIn card: {e}")
                         continue
 
-                    # Clean up the URL
-                    link = link.split('?')[0]
-                    job_id = _make_job_id('linkedin', link)
-
-                    jobs.append({
-                        'job_id':    job_id,
-                        'title':     title,
-                        'company':   company,
-                        'location':  loc or location,
-                        'platform':  'linkedin',
-                        'url':       link,
-                        'description': '',  # fetched separately
-                        'posted_date': '',
-                        'salary':    '',
-                        'job_type':  'Full-time',
-                    })
-
-                except Exception as e:
-                    logger.debug(f"Error parsing LinkedIn card: {e}")
-                    continue
-
         except Exception as e:
-            logger.error(f"LinkedIn search error: {e}")
+            logger.error(f"LinkedIn search error: {e}", exc_info=True)
         finally:
             await browser.close()
 
@@ -265,54 +399,141 @@ async def search_indeed(keywords: list, location: str, max_results: int = 25) ->
                 await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
                 await asyncio.sleep(random.uniform(1.5, 2.5))
 
-            # Extract job cards
-            job_cards = await page.query_selector_all('.job_seen_beacon, .jobCard_mainContent')
+            # Try multiple card selectors (Indeed changes these)
+            card_selectors = [
+                '.job_seen_beacon',
+                '.jobCard_mainContent',
+                '.resultContent',
+                'div.cardOutline',
+                'td.resultContent',
+                'li[data-jk]',
+                '.tapItem',
+            ]
 
-            for card in job_cards[:max_results]:
-                try:
-                    title_el = await card.query_selector('h2.jobTitle a span, .jobTitle span[title]')
-                    company_el = await card.query_selector('[data-testid="company-name"], .companyName')
-                    location_el = await card.query_selector('[data-testid="text-location"], .companyLocation')
-                    link_el = await card.query_selector('h2.jobTitle a, a.jcs-JobTitle')
-                    salary_el = await card.query_selector('.salary-snippet-container, .estimated-salary')
+            job_cards = []
+            used_selector = ''
+            for sel in card_selectors:
+                job_cards = await page.query_selector_all(sel)
+                if job_cards:
+                    used_selector = sel
+                    break
 
-                    title = (await title_el.inner_text()).strip() if title_el else ''
-                    company = (await company_el.inner_text()).strip() if company_el else ''
-                    loc = (await location_el.inner_text()).strip() if location_el else ''
-                    salary = (await salary_el.inner_text()).strip() if salary_el else ''
+            logger.info(f"Indeed: found {len(job_cards)} cards using '{used_selector}'")
 
-                    href = ''
-                    if link_el:
+            if not job_cards:
+                # Fallback: find all Indeed job links
+                page_text = await page.inner_text('body')
+                logger.warning(f"No Indeed cards found. Page preview: {page_text[:500]}")
+                all_links = await page.query_selector_all('a[href*="jk="], a[data-jk]')
+                logger.info(f"Indeed fallback: found {len(all_links)} job links")
+
+                seen_jks = set()
+                for link_el in all_links[:max_results]:
+                    try:
                         href = await link_el.get_attribute('href') or ''
+                        jk = await link_el.get_attribute('data-jk') or ''
+                        if not jk:
+                            jk_match = re.search(r'jk=([a-f0-9]+)', href)
+                            jk = jk_match.group(1) if jk_match else ''
+                        if not jk or jk in seen_jks:
+                            continue
+                        seen_jks.add(jk)
+
+                        text = (await link_el.inner_text()).strip()
+                        if not text or len(text) < 3:
+                            continue
+
+                        full_url = f'https://www.indeed.com/viewjob?jk={jk}'
+                        jobs.append({
+                            'job_id': f'indeed_{jk}',
+                            'title': text,
+                            'company': '',
+                            'location': location,
+                            'platform': 'indeed',
+                            'url': full_url,
+                            'description': '',
+                            'posted_date': '',
+                            'salary': '',
+                            'job_type': 'Full-time',
+                        })
+                    except Exception as e:
+                        logger.debug(f"Error parsing Indeed fallback link: {e}")
+            else:
+                for card in job_cards[:max_results]:
+                    try:
+                        title_sels = ['h2.jobTitle a span', '.jobTitle span[title]', 'h2.jobTitle span', 'h2 a span', '.jobTitle a']
+                        company_sels = ['[data-testid="company-name"]', '.companyName', '.company_location .companyName', 'span.companyName']
+                        location_sels = ['[data-testid="text-location"]', '.companyLocation', '.company_location .companyLocation']
+                        link_sels = ['h2.jobTitle a', 'a.jcs-JobTitle', 'a[data-jk]', 'a[href*="jk="]']
+                        salary_sels = ['.salary-snippet-container', '.estimated-salary', '[data-testid="attribute_snippet_testid"]', '.salaryOnly']
+
+                        title = ''
+                        for sel in title_sels:
+                            el = await card.query_selector(sel)
+                            if el:
+                                title = (await el.inner_text()).strip()
+                                if title:
+                                    break
+
+                        company = ''
+                        for sel in company_sels:
+                            el = await card.query_selector(sel)
+                            if el:
+                                company = (await el.inner_text()).strip()
+                                if company:
+                                    break
+
+                        loc = ''
+                        for sel in location_sels:
+                            el = await card.query_selector(sel)
+                            if el:
+                                loc = (await el.inner_text()).strip()
+                                if loc:
+                                    break
+
+                        salary = ''
+                        for sel in salary_sels:
+                            el = await card.query_selector(sel)
+                            if el:
+                                salary = (await el.inner_text()).strip()
+                                if salary:
+                                    break
+
+                        href = ''
+                        for sel in link_sels:
+                            el = await card.query_selector(sel)
+                            if el:
+                                href = await el.get_attribute('href') or ''
+                                if href:
+                                    break
                         if href and not href.startswith('http'):
                             href = 'https://www.indeed.com' + href
 
-                    if not title or not href:
+                        if not title or not href:
+                            continue
+
+                        jk_match = re.search(r'jk=([a-f0-9]+)', href)
+                        job_id = 'indeed_' + (jk_match.group(1) if jk_match else _make_job_id('indeed', href)[-12:])
+
+                        jobs.append({
+                            'job_id':      job_id,
+                            'title':       title,
+                            'company':     company,
+                            'location':    loc or location,
+                            'platform':    'indeed',
+                            'url':         href,
+                            'description': '',
+                            'posted_date': '',
+                            'salary':      salary,
+                            'job_type':    'Full-time',
+                        })
+
+                    except Exception as e:
+                        logger.debug(f"Error parsing Indeed card: {e}")
                         continue
 
-                    # Extract Indeed job key from URL
-                    jk_match = re.search(r'jk=([a-f0-9]+)', href)
-                    job_id = 'indeed_' + (jk_match.group(1) if jk_match else _make_job_id('indeed', href)[-12:])
-
-                    jobs.append({
-                        'job_id':      job_id,
-                        'title':       title,
-                        'company':     company,
-                        'location':    loc or location,
-                        'platform':    'indeed',
-                        'url':         href,
-                        'description': '',
-                        'posted_date': '',
-                        'salary':      salary,
-                        'job_type':    'Full-time',
-                    })
-
-                except Exception as e:
-                    logger.debug(f"Error parsing Indeed card: {e}")
-                    continue
-
         except Exception as e:
-            logger.error(f"Indeed search error: {e}")
+            logger.error(f"Indeed search error: {e}", exc_info=True)
         finally:
             await browser.close()
 

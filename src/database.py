@@ -122,12 +122,18 @@ def upsert_job(job: dict) -> int:
         return c.lastrowid
 
 
-def get_jobs(status=None, limit=100, offset=0):
+def get_jobs(status=None, limit=100, offset=0, exclude_statuses=None):
     with get_conn() as conn:
         if status:
             rows = conn.execute(
                 'SELECT * FROM jobs WHERE status=? ORDER BY found_date DESC LIMIT ? OFFSET ?',
                 (status, limit, offset)
+            ).fetchall()
+        elif exclude_statuses:
+            placeholders = ','.join('?' for _ in exclude_statuses)
+            rows = conn.execute(
+                f'SELECT * FROM jobs WHERE status NOT IN ({placeholders}) ORDER BY found_date DESC LIMIT ? OFFSET ?',
+                (*exclude_statuses, limit, offset)
             ).fetchall()
         else:
             rows = conn.execute(

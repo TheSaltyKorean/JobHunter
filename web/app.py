@@ -88,7 +88,11 @@ def jobs():
     per_page = 20
     offset = (page - 1) * per_page
 
-    all_jobs = db.get_jobs(status=status or None, limit=per_page, offset=offset)
+    # Default view hides skipped/failed — user can still click those tabs to see them
+    if status:
+        all_jobs = db.get_jobs(status=status, limit=per_page, offset=offset)
+    else:
+        all_jobs = db.get_jobs(exclude_statuses=['skipped'], limit=per_page, offset=offset)
     stats = db.get_stats()
 
     # Parse matched_skills JSON
@@ -412,6 +416,16 @@ def api_run_queue():
 
     threading.Thread(target=run_all, daemon=True).start()
     return jsonify({'message': f"Processing {len(queued)} queued applications..."})
+
+
+@app.route('/api/shutdown', methods=['POST', 'GET'])
+def api_shutdown():
+    """Gracefully shut down the application."""
+    import signal, os
+    logger.info("Shutdown requested via web UI")
+    # Send SIGTERM to self to trigger clean shutdown
+    os.kill(os.getpid(), signal.SIGTERM)
+    return jsonify({'message': 'Shutting down...'})
 
 
 # ─────────────────────────────────────────────────────────

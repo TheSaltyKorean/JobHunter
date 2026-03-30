@@ -226,18 +226,27 @@ def main():
         f"Dashboard: http://{FLASK_HOST}:{FLASK_PORT}"
     )
 
-    # Start system tray (blocks until user quits)
-    logger.info("Starting system tray icon...")
-    _start_system_tray()
+    # Start system tray in background (non-blocking)
+    tray_thread = threading.Thread(target=_start_system_tray, daemon=True, name='Tray')
+    tray_thread.start()
 
-    # If no system tray, just keep the main thread alive
-    logger.info("Running in console mode. Press Ctrl+C to stop.")
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("Shutting down...")
-        email_monitor.stop_monitor()
+    # Keep the main thread alive — handle Ctrl+C and also support /api/shutdown
+    logger.info("Running. Press Ctrl+C or visit /api/shutdown to stop.")
+    import signal
+    stop_event = threading.Event()
+
+    def _signal_handler(sig, frame):
+        logger.info("Shutting down (Ctrl+C)...")
+        stop_event.set()
+
+    signal.signal(signal.SIGINT, _signal_handler)
+    signal.signal(signal.SIGTERM, _signal_handler)
+
+    # Wait until signaled to stop
+    stop_event.wait()
+    email_monitor.stop_monitor()
+    logger.info("JobApplicationBot stopped.")
+    os._exit(0)
 
 
 if __name__ == '__main__':
