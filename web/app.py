@@ -358,6 +358,7 @@ def settings():
             # Automation
             'auto_apply':        request.form.get('auto_apply', 'false'),
             'auto_search':       request.form.get('auto_search', 'false'),
+            'debug_mode':        request.form.get('debug_mode', 'false'),
         }
         _save_settings(new_settings)
         notifier.load_settings(new_settings)

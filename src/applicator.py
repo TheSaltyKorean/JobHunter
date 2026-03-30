@@ -1635,9 +1635,12 @@ async def apply_to_job(job: dict, settings: dict) -> dict:
 
     result = {'success': False, 'qa_pairs': [], 'error': ''}
 
+    # Debug mode shows the browser; production mode runs headless
+    debug_mode = settings.get('debug_mode', 'true').lower() == 'true'
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(
-            headless=False,
+            headless=not debug_mode,
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--disable-dev-shm-usage',

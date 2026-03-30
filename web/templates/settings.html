@@ -50,6 +50,14 @@
         </label>
         <small>&#x26A0;&#xFE0F; Use carefully! Enables fully automatic applications without review.</small>
       </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" name="debug_mode" value="true"
+                 {% if settings.get('debug_mode', 'true') == 'true' %}checked{% endif %}>
+          Debug mode (show browser window during applications)
+        </label>
+        <small>When enabled, Playwright opens a visible browser so you can watch it work. Disable for headless/background mode.</small>
+      </div>
     </div>
 
     <!-- Salary -->

@@ -25,12 +25,12 @@ contact:
   preferred_work_type: "Hybrid or Remote"   # Remote, Hybrid, On-site, etc.
 
 resumes:
-  # Keys are your own labels. Paths are relative to the project root.
-  # You can name these anything — just reference the same keys in resume_routing below.
-  executive: "resumes/your-name-executive.pdf"
-  it_manager: "resumes/your-name-tech-leader.pdf"
-  cloud: "resumes/your-name-cloud.pdf"
-  contract: "resumes/your-name-contract.pdf"
+  # Upload resumes via the web UI at Settings > Resumes & Routing.
+  # Or manually add paths here (relative to the project root):
+  #   executive: "resumes/Your Name - Executive.pdf"
+  #   it_manager: "resumes/Your Name - Tech Leader.pdf"
+  #   cloud: "resumes/Your Name - Cloud.pdf"
+  #   contract: "resumes/Your Name - Contract.pdf"
 
 # Resume routing: maps job title patterns to resume keys.
 # Order matters — first match wins.
