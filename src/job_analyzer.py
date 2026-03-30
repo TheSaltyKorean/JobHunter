@@ -39,6 +39,39 @@ IC_TITLES = [
     r'\bdata scientist\b', r'\"data engineer\b', r'\bml engineer\b',
 ]
 
+# ─────────────────────────────────────────────────────────
+# IRRELEVANT TITLE KEYWORDS  (auto-skip entirely)
+# These roles are completely outside Randy's background.
+# ─────────────────────────────────────────────────────────
+EXCLUDE_TITLES = [
+    # Engineering disciplines that aren't IT/software
+    r'\belectrical engineer', r'\bmechanical engineer', r'\bcivil engineer',
+    r'\bchemical engineer', r'\bstructural engineer', r'\bindustrial engineer',
+    r'\bmanufacturing engineer', r'\bhardware engineer', r'\brf engineer',
+    r'\bfirmware engineer', r'\bembedded engineer', r'\bprocess engineer',
+    # Completely different career tracks
+    r'\bproduct manager\b', r'\bproduct owner\b', r'\bproduct director\b',
+    r'\bscrum master\b', r'\bagile coach\b',
+    r'\bsales\b', r'\baccount executive\b', r'\baccount manager\b',
+    r'\bbusiness development\b', r'\bbdr\b', r'\bsdr\b',
+    r'\bmarketing\b', r'\bsocial media\b', r'\bcontent strateg',
+    r'\brecruit\b', r'\bhr\b', r'\bhuman resource', r'\btalent acqui',
+    r'\bnurs\b', r'\bpharmac', r'\bclinical\b', r'\bphysician\b',
+    r'\bmedical director\b', r'\bdental\b',
+    r'\baccountant\b', r'\baudit\b', r'\btax\b', r'\bcontroller\b',
+    r'\bfinancial analyst\b', r'\bcfo\b', r'\btreasur',
+    r'\blegal\b', r'\battorney\b', r'\bparalegal\b', r'\bcounsel\b',
+    r'\bsupply chain\b', r'\blogistics\b', r'\bwarehouse\b',
+    r'\bcustomer service\b', r'\bcustomer support\b', r'\bcall center\b',
+    r'\bteacher\b', r'\bprofessor\b', r'\binstructor\b', r'\bprincipal\b(?!\s*engineer)',
+    r'\breal estate\b', r'\bproperty manage', r'\bconstruction manage',
+    r'\bdesign\b(?!.*\b(?:system|software|cloud|infra))', r'\bgraphic design',
+    r'\bux\b', r'\bui/ux\b', r'\bux/ui\b',
+    # Low-level IT roles (not management)
+    r'\bhelp desk\b', r'\bdesktop support\b', r'\bservice desk\b',
+    r'\bintern\b', r'\bentry level\b', r'\bjunior\b',
+]
+
 # But these IC-sounding words are OK in management context
 MANAGEMENT_OVERRIDE = [
     r'manage.*engineer', r'lead.*team', r'director.*engineer',
@@ -91,8 +124,23 @@ def is_indian_firm(company: str, description: str = '') -> tuple[bool, str]:
     return False, ""
 
 
+def is_excluded_title(title: str) -> tuple[bool, str]:
+    """Check if a job title is completely irrelevant to Randy's background.
+    Returns (is_excluded, reason)."""
+    title_lower = title.lower()
+    for pat in EXCLUDE_TITLES:
+        if re.search(pat, title_lower, re.IGNORECASE):
+            return True, f"Excluded title pattern: {pat}"
+    return False, ""
+
+
 def classify_role(title: str, description: str = '') -> str:
-    """Returns 'management', 'ic', or 'unknown'."""
+    """Returns 'management', 'ic', 'excluded', or 'unknown'."""
+    # Check for completely irrelevant roles first
+    excluded, _ = is_excluded_title(title)
+    if excluded:
+        return 'excluded'
+
     text = (title + ' ' + description[:500]).lower()
 
     # Check for explicit management overrides first
@@ -227,7 +275,7 @@ def analyze_job(title: str, company: str, description: str,
         'is_indian_firm': indian,
         'flagged_reason': indian_reason,
         'resume_type':    resume_type,
-        'meets_threshold': score >= 50 and role_type in ('management', 'unknown'),
+        'meets_threshold': score >= 50 and role_type in ('management', 'unknown') and role_type != 'excluded',
     }
 
 
@@ -236,6 +284,8 @@ def should_apply(analysis: dict, min_score: float = 50.0) -> tuple[bool, str]:
     Returns (should_apply, reason).
     Respects Randy's rules: management roles only, 50%+ match.
     """
+    if analysis['role_type'] == 'excluded':
+        return False, "Irrelevant role – not in IT/cloud/infrastructure"
     if analysis['role_type'] == 'ic':
         return False, "Individual contributor role – skipping"
     if analysis['match_score'] < min_score:

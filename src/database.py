@@ -56,7 +56,7 @@ def init_db():
                 flagged_reason  TEXT,
 
                 -- Application status
-                status          TEXT DEFAULT 'new',   -- new, queued, applying, applied, skipped, failed
+                status          TEXT DEFAULT 'new',   -- new, queued, applying, applied, skipped, failed, interview, rejected, offer, ghosted
                 applied_date    TEXT,
                 notes           TEXT,
 
@@ -178,6 +178,10 @@ def get_stats():
                 SUM(CASE WHEN status = 'applied' THEN 1 ELSE 0 END) as applied,
                 SUM(CASE WHEN status = 'skipped' THEN 1 ELSE 0 END) as skipped,
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed,
+                SUM(CASE WHEN status = 'interview' THEN 1 ELSE 0 END) as interview,
+                SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected,
+                SUM(CASE WHEN status = 'offer' THEN 1 ELSE 0 END) as offer,
+                SUM(CASE WHEN status = 'ghosted' THEN 1 ELSE 0 END) as ghosted,
                 SUM(CASE WHEN is_indian_firm = 1 THEN 1 ELSE 0 END) as indian_firm,
                 SUM(CASE WHEN role_type = 'management' THEN 1 ELSE 0 END) as management
             FROM jobs
@@ -190,6 +194,10 @@ def get_stats():
             'applied': row['applied'] or 0,
             'skipped': row['skipped'] or 0,
             'failed': row['failed'] or 0,
+            'interview': row['interview'] or 0,
+            'rejected': row['rejected'] or 0,
+            'offer': row['offer'] or 0,
+            'ghosted': row['ghosted'] or 0,
             'indian_firm': row['indian_firm'] or 0,
             'management': row['management'] or 0,
         }

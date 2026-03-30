@@ -19,6 +19,16 @@
       <form method="POST" action="{{ url_for('queue_job', job_id=job.id) }}" style="display:inline">
         <button class="btn btn-primary">Queue for Later</button>
       </form>
+      <button class="btn btn-secondary" onclick="updateStatus({{ job.id }}, 'skipped')">Dismiss</button>
+    {% endif %}
+    {% if job.status == 'applied' %}
+      <button class="btn btn-success" onclick="updateStatus({{ job.id }}, 'interview')">&#x1F3AF; Got Interview</button>
+      <button class="btn btn-secondary" onclick="updateStatus({{ job.id }}, 'rejected')">Rejected</button>
+      <button class="btn btn-secondary" onclick="updateStatus({{ job.id }}, 'ghosted')">Ghosted</button>
+    {% endif %}
+    {% if job.status == 'interview' %}
+      <button class="btn btn-success" onclick="updateStatus({{ job.id }}, 'offer')">&#x1F389; Got Offer!</button>
+      <button class="btn btn-secondary" onclick="updateStatus({{ job.id }}, 'rejected')">Rejected</button>
     {% endif %}
   </div>
 </div>
@@ -96,6 +106,16 @@ function applyNow(id) {
   fetch(`/jobs/${id}/apply`, {method: 'POST'})
     .then(r => r.json())
     .then(d => { alert(d.message || d.error); });
+}
+
+function updateStatus(id, status) {
+  const labels = {interview: 'Mark as got interview?', rejected: 'Mark as rejected?', offer: 'Mark as got offer?', ghosted: 'Mark as ghosted?', skipped: 'Dismiss this job?'};
+  if (!confirm(labels[status] || `Change status to ${status}?`)) return;
+  fetch(`/api/job/${id}/status`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: status})
+  }).then(() => location.reload());
 }
 </script>
 {% endblock %}

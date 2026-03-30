@@ -17,6 +17,10 @@
   <a href="{{ url_for('jobs', status='new') }}" class="tab {% if current_status=='new' %}active{% endif %}">New ({{ stats.new }})</a>
   <a href="{{ url_for('jobs', status='queued') }}" class="tab {% if current_status=='queued' %}active{% endif %}">Queued ({{ stats.queued }})</a>
   <a href="{{ url_for('jobs', status='applied') }}" class="tab {% if current_status=='applied' %}active{% endif %}">Applied ({{ stats.applied }})</a>
+  <a href="{{ url_for('jobs', status='interview') }}" class="tab {% if current_status=='interview' %}active{% endif %}">&#x1F3AF; Interview ({{ stats.interview }})</a>
+  <a href="{{ url_for('jobs', status='offer') }}" class="tab {% if current_status=='offer' %}active{% endif %}">&#x1F389; Offer ({{ stats.offer }})</a>
+  <a href="{{ url_for('jobs', status='rejected') }}" class="tab {% if current_status=='rejected' %}active{% endif %}">Rejected ({{ stats.rejected }})</a>
+  <a href="{{ url_for('jobs', status='ghosted') }}" class="tab {% if current_status=='ghosted' %}active{% endif %}">Ghosted ({{ stats.ghosted }})</a>
   <a href="{{ url_for('jobs', status='skipped') }}" class="tab {% if current_status=='skipped' %}active{% endif %}">Skipped ({{ stats.skipped }})</a>
   <a href="{{ url_for('jobs', status='failed') }}" class="tab {% if current_status=='failed' %}active{% endif %}">Failed ({{ stats.failed }})</a>
 </div>
@@ -61,14 +65,20 @@
                 <button class="btn-sm btn-green">Queue</button>
               </form>
               <button class="btn-sm btn-blue" onclick="applyNow({{ job.id }})">Apply Now</button>
+              <button class="btn-sm btn-red" onclick="dismissJob({{ job.id }})">Dismiss</button>
             {% elif job.status == 'queued' %}
               <button class="btn-sm btn-blue" onclick="applyNow({{ job.id }})">Apply Now</button>
-            {% endif %}
-            {% if job.status not in ('applied',) %}
-              <button class="btn-sm btn-red" onclick="skipJob({{ job.id }})">Skip</button>
+              <button class="btn-sm btn-red" onclick="dismissJob({{ job.id }})">Dismiss</button>
+            {% elif job.status == 'applied' %}
+              <button class="btn-sm btn-green" onclick="updateStatus({{ job.id }}, 'interview')">Got Interview</button>
+              <button class="btn-sm btn-red" onclick="updateStatus({{ job.id }}, 'rejected')">Rejected</button>
+              <button class="btn-sm btn-gray" onclick="updateStatus({{ job.id }}, 'ghosted')">Ghosted</button>
+            {% elif job.status == 'interview' %}
+              <button class="btn-sm btn-green" onclick="updateStatus({{ job.id }}, 'offer')">Got Offer!</button>
+              <button class="btn-sm btn-red" onclick="updateStatus({{ job.id }}, 'rejected')">Rejected</button>
             {% endif %}
             {% if job.url %}
-              <a href="{{ job.url }}" target="_blank" class="btn-sm btn-gray">View ↗</a>
+              <a href="{{ job.url }}" target="_blank" class="btn-sm btn-gray">View &#x2197;</a>
             {% endif %}
           </td>
         </tr>
@@ -79,11 +89,11 @@
     <!-- Pagination -->
     <div class="pagination">
       {% if page > 1 %}
-        <a href="{{ url_for('jobs', status=current_status, page=page-1) }}" class="btn-sm">← Prev</a>
+        <a href="{{ url_for('jobs', status=current_status, page=page-1) }}" class="btn-sm">&#x2190; Prev</a>
       {% endif %}
       <span>Page {{ page }}</span>
       {% if jobs|length == 20 %}
-        <a href="{{ url_for('jobs', status=current_status, page=page+1) }}" class="btn-sm">Next →</a>
+        <a href="{{ url_for('jobs', status=current_status, page=page+1) }}" class="btn-sm">Next &#x2192;</a>
       {% endif %}
     </div>
 
@@ -98,24 +108,77 @@
   {% endif %}
 </div>
 
+<!-- Dismiss Modal -->
+<div id="dismiss-modal" class="modal" style="display:none">
+  <div class="modal-content">
+    <h3>Dismiss Job</h3>
+    <p>Why are you dismissing this job?</p>
+    <div class="form-group">
+      <select id="dismiss-reason" class="form-control">
+        <option value="Not relevant to my background">Not relevant to my background</option>
+        <option value="Wrong seniority level">Wrong seniority level</option>
+        <option value="Bad location">Bad location</option>
+        <option value="Low pay">Low pay</option>
+        <option value="Indian staffing firm">Indian staffing firm</option>
+        <option value="Already applied elsewhere">Already applied elsewhere</option>
+        <option value="Company not interested">Company not interested</option>
+        <option value="">Other (no reason)</option>
+      </select>
+    </div>
+    <div style="margin-top:12px">
+      <button class="btn btn-red" onclick="confirmDismiss()">Dismiss</button>
+      <button class="btn btn-secondary" onclick="closeDismissModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
+<style>
+.modal { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:flex; align-items:center; justify-content:center; z-index:1000; }
+.modal-content { background:white; border-radius:8px; padding:24px; max-width:400px; width:90%; box-shadow:0 4px 20px rgba(0,0,0,0.3); }
+</style>
 <script>
+let dismissJobId = null;
+
 function applyNow(id) {
   if (!confirm('Apply to this job now? A browser window will open.')) return;
   fetch(`/jobs/${id}/apply`, {method: 'POST'})
     .then(r => r.json())
     .then(d => { alert(d.message || d.error); setTimeout(() => location.reload(), 2000); });
 }
-function skipJob(id) {
-  if (!confirm('Skip this job?')) return;
+
+function dismissJob(id) {
+  dismissJobId = id;
+  document.getElementById('dismiss-modal').style.display = 'flex';
+}
+
+function closeDismissModal() {
+  document.getElementById('dismiss-modal').style.display = 'none';
+  dismissJobId = null;
+}
+
+function confirmDismiss() {
+  if (!dismissJobId) return;
+  const reason = document.getElementById('dismiss-reason').value;
+  fetch(`/api/job/${dismissJobId}/status`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: 'skipped', notes: reason})
+  }).then(() => { closeDismissModal(); location.reload(); });
+}
+
+function updateStatus(id, status) {
+  const labels = {interview: 'Mark as got interview?', rejected: 'Mark as rejected?', offer: 'Mark as got offer?', ghosted: 'Mark as ghosted (no response)?'};
+  if (!confirm(labels[status] || `Change status to ${status}?`)) return;
   fetch(`/api/job/${id}/status`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({status: 'skipped'})
+    body: JSON.stringify({status: status})
   }).then(() => location.reload());
 }
+
 function runQueue() {
   if (!confirm('Apply to all queued jobs now?')) return;
   fetch('/api/run-queue', {method: 'POST'})

@@ -37,7 +37,7 @@ from src import email_monitor
 from web.app import create_app
 
 FLASK_PORT = 5000
-FLASK_HOST = '127.0.0.1'
+FLASK_HOST = '0.0.0.0'  # Bind to all interfaces so other PCs on the network can access
 
 # ── Load Settings ──────────────────────────────────────────
 

@@ -28,9 +28,17 @@
     <div class="stat-number">{{ stats.new }}</div>
     <div class="stat-label">New (Review)</div>
   </div>
+  <div class="stat-card" style="border-left:4px solid #805ad5">
+    <div class="stat-number">{{ stats.interview }}</div>
+    <div class="stat-label">Interviews</div>
+  </div>
+  <div class="stat-card" style="border-left:4px solid #38a169">
+    <div class="stat-number">{{ stats.offer }}</div>
+    <div class="stat-label">Offers</div>
+  </div>
   <div class="stat-card stat-red">
-    <div class="stat-number">{{ stats.skipped }}</div>
-    <div class="stat-label">Skipped</div>
+    <div class="stat-number">{{ stats.rejected + stats.ghosted }}</div>
+    <div class="stat-label">Rejected / Ghosted</div>
   </div>
   <div class="stat-card stat-orange">
     <div class="stat-number">{{ stats.indian_firm }}</div>
