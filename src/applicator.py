@@ -1067,10 +1067,22 @@ async def apply_indeed(page, job: dict) -> dict:
         external_url = await _detect_external_apply(page)
         if external_url:
             logger.info(f"Indeed job redirects to external ATS: {external_url}")
-            platform = ats_credentials.detect_platform(external_url)
-            if platform != 'unknown' and platform != 'indeed':
-                job_copy = {**job, 'url': external_url, 'platform': platform}
-                return await _apply_external_ats(page, job_copy)
+            # If the external URL is still on Indeed (applystart), follow it first
+            if 'indeed.com' in external_url:
+                await page.goto(external_url, wait_until='domcontentloaded', timeout=30000)
+                await _async_delay(3, 5)
+                # After redirect, check if we landed on an external ATS
+                landed_url = page.url
+                if 'indeed.com' not in landed_url:
+                    landed_platform = ats_credentials.detect_platform(landed_url)
+                    logger.info(f"Indeed redirected to external site: {landed_url} ({landed_platform})")
+                    job_copy = {**job, 'url': landed_url, 'platform': landed_platform}
+                    return await _apply_external_ats(page, job_copy)
+            else:
+                platform = ats_credentials.detect_platform(external_url)
+                if platform != 'unknown' and platform != 'indeed':
+                    job_copy = {**job, 'url': external_url, 'platform': platform}
+                    return await _apply_external_ats(page, job_copy)
 
         # Click Apply Now button
         apply_btn = await page.query_selector(
@@ -1085,6 +1097,13 @@ async def apply_indeed(page, job: dict) -> dict:
 
         await apply_btn.click()
         await _async_delay(2, 4)
+
+        # Check if clicking Apply redirected us off Indeed
+        if 'indeed.com' not in page.url:
+            landed_platform = ats_credentials.detect_platform(page.url)
+            logger.info(f"Indeed Apply redirected to: {page.url} ({landed_platform})")
+            job_copy = {**job, 'url': page.url, 'platform': landed_platform}
+            return await _apply_external_ats(page, job_copy)
 
         # Indeed Apply is a multi-step modal/page flow
         max_steps = 15
