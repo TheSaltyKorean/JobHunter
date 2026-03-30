@@ -147,12 +147,11 @@ def notify_jobs_found(count: int, platform: str):
         f"Found {count} new qualifying job(s) on {platform}.",
         'success'
     )
-    notify(
-        "New Jobs Found",
-        f"Found {count} new qualifying job(s) on {platform}.\n"
-        f"Open the dashboard to review and queue applications.",
-        send_mail=True
-    )
+    # Email only — web notification already added above
+    if _settings.get('email_notifications', 'true').lower() == 'true':
+        send_email("New Jobs Found",
+                   f"Found {count} new qualifying job(s) on {platform}.\n"
+                   f"Open the dashboard to review and queue applications.")
 
 
 def notify_applied(title: str, company: str):
@@ -161,10 +160,9 @@ def notify_applied(title: str, company: str):
         f"Applied to: {title} at {company}",
         'success'
     )
-    notify(
-        "Application Submitted",
-        f"Successfully applied to: {title}\nCompany: {company}"
-    )
+    if _settings.get('email_notifications', 'true').lower() == 'true':
+        send_email("Application Submitted",
+                   f"Successfully applied to: {title}\nCompany: {company}")
 
 
 def notify_failed(title: str, company: str, reason: str):
@@ -173,10 +171,9 @@ def notify_failed(title: str, company: str, reason: str):
         f"Could not apply to: {title} at {company} — {reason}",
         'error'
     )
-    notify(
-        "Application Failed",
-        f"Could not apply to: {title}\nCompany: {company}\nReason: {reason}"
-    )
+    if _settings.get('email_notifications', 'true').lower() == 'true':
+        send_email("Application Failed",
+                   f"Could not apply to: {title}\nCompany: {company}\nReason: {reason}")
 
 
 def notify_needs_input(question: str, job_title: str):

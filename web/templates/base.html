@@ -160,18 +160,29 @@
   <script>
     // Poll for background notifications (replaces system tray)
     (function() {
-      let lastId = 0;
+      // Persist lastId across page navigations so old toasts don't replay
+      let lastId = parseInt(sessionStorage.getItem('notif_last_id') || '0', 10);
+      // On first load, fetch current max ID without showing anything (catch up)
+      let initialised = false;
       function pollNotifications() {
         fetch('/api/notifications?since=' + lastId)
           .then(r => r.json())
           .then(items => {
-            items.forEach(n => {
-              showToast(n.title + ': ' + n.message, n.category || 'info');
-              if (n.id > lastId) lastId = n.id;
-            });
+            if (!initialised) {
+              // First poll after page load: just record the latest ID, don't show toasts
+              items.forEach(n => { if (n.id > lastId) lastId = n.id; });
+              initialised = true;
+            } else {
+              items.forEach(n => {
+                showToast(n.title + ': ' + n.message, n.category || 'info');
+                if (n.id > lastId) lastId = n.id;
+              });
+            }
+            sessionStorage.setItem('notif_last_id', lastId);
           })
           .catch(() => {});
       }
+      pollNotifications();  // Run immediately to catch up
       setInterval(pollNotifications, 5000);
     })();
   </script>
