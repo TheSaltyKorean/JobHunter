@@ -436,7 +436,10 @@ function uploadResume() {
   fd.append('key', keyInput.value.trim());
 
   fetch('/api/upload-resume', { method: 'POST', body: fd })
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(`Server ${r.status}: ${t}`); });
+      return r.json();
+    })
     .then(d => {
       if (d.ok) {
         showToast(`Resume "${d.key}" uploaded!`, 'success');
@@ -462,7 +465,7 @@ function uploadResume() {
         showToast(d.error || 'Upload failed', 'error');
       }
     })
-    .catch(() => showToast('Upload failed', 'error'));
+    .catch(err => showToast('Upload failed: ' + err.message, 'error'));
 }
 
 function deleteResume(key) {

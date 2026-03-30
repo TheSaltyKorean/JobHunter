@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', os.urandom(24).hex())
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16 MB max upload
 
 APP_ROOT = Path(__file__).parent.parent
 
@@ -490,6 +491,14 @@ def api_resume_routing():
 @app.route('/api/upload-resume', methods=['POST'])
 def api_upload_resume():
     """Upload a resume PDF and register it in profile.yaml."""
+    try:
+        return _handle_upload_resume()
+    except Exception as e:
+        logger.exception("Resume upload failed")
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+def _handle_upload_resume():
     import yaml
 
     if 'file' not in request.files:
