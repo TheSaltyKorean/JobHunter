@@ -93,7 +93,21 @@ class _ProfileProxy:
                 "No resumes configured in profile.yaml! "
                 "Add a 'resumes' section with paths to your PDF files."
             )
-        return resumes
+            return resumes
+        # Filter out entries whose files don't exist (template placeholders)
+        valid = {}
+        for key, path in resumes.items():
+            full = os.path.join(_APP_ROOT, path)
+            if os.path.exists(full):
+                valid[key] = path
+            else:
+                logger.debug(f"Skipping resume '{key}': file not found at {full}")
+        if not valid and resumes:
+            logger.warning(
+                "All resume paths in profile.yaml point to missing files. "
+                "Upload resumes via Settings or fix the paths in profile.yaml."
+            )
+        return valid
 
     @property
     def EDUCATION(self):
