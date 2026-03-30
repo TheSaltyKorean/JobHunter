@@ -148,7 +148,23 @@ async def search_linkedin(keywords: list, location: str,
         try:
             logger.info(f"Searching LinkedIn: '{query}' in '{location}'")
             logger.info(f"URL: {url}")
-            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            try:
+                await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            except Exception as nav_err:
+                err_msg = str(nav_err)
+                if 'ERR_TOO_MANY_REDIRECTS' in err_msg:
+                    logger.error(
+                        "LinkedIn session cookie is expired or invalid (redirect loop). "
+                        "Go to Settings and update your li_at cookie from Chrome DevTools."
+                    )
+                    from . import notifier
+                    notifier.notify_config_warning(
+                        "LinkedIn Cookie Expired",
+                        "Your LinkedIn session cookie is invalid. Update it in Settings to resume searching."
+                    )
+                    return None  # None signals auth failure (vs [] for no results)
+                raise  # Re-raise other navigation errors
+
             await asyncio.sleep(random.uniform(3, 5))
 
             current_url = page.url
