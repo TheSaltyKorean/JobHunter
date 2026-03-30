@@ -225,32 +225,30 @@ def search():
             all_jobs = []
             seen_urls = set()
 
-            # Search each keyword individually to get better results
-            linkedin_disabled = False  # Set to True if cookie is bad to stop retrying
-            for keyword in keywords:
-                logger.info(f"Searching for: {keyword}")
+            # LinkedIn: single browser session handles all keywords internally
+            if 'linkedin' in platforms:
+                try:
+                    logger.info(f"Searching LinkedIn for {len(keywords)} keywords: {keywords}")
+                    li_jobs = _run_async(search_linkedin(
+                        keywords, location,
+                        li_session_cookie=settings.get('linkedin_session_cookie', '')
+                    ))
+                    if li_jobs is None:
+                        logger.warning("LinkedIn search returned None (cookie/auth issue)")
+                    else:
+                        for job in li_jobs:
+                            if job['url'] not in seen_urls:
+                                seen_urls.add(job['url'])
+                                all_jobs.append(job)
+                        logger.info(f"  LinkedIn total: {len(li_jobs)} jobs")
+                except Exception as e:
+                    logger.error(f"  LinkedIn search failed: {e}")
 
-                if 'linkedin' in platforms and not linkedin_disabled:
+            # Indeed: search each keyword individually
+            if 'indeed' in platforms:
+                for keyword in keywords:
                     try:
-                        li_jobs = _run_async(search_linkedin(
-                            [keyword], location,
-                            li_session_cookie=settings.get('linkedin_session_cookie', '')
-                        ))
-                        if li_jobs is None:
-                            # None signals an auth failure — stop trying LinkedIn
-                            linkedin_disabled = True
-                            logger.warning("LinkedIn disabled for remaining keywords (cookie issue)")
-                        else:
-                            for job in li_jobs:
-                                if job['url'] not in seen_urls:
-                                    seen_urls.add(job['url'])
-                                    all_jobs.append(job)
-                            logger.info(f"  LinkedIn '{keyword}': {len(li_jobs)} jobs")
-                    except Exception as e:
-                        logger.error(f"  LinkedIn '{keyword}' failed: {e}")
-
-                if 'indeed' in platforms:
-                    try:
+                        logger.info(f"Searching Indeed for: {keyword}")
                         indeed_jobs = _run_async(search_indeed([keyword], location))
                         for job in indeed_jobs:
                             if job['url'] not in seen_urls:

@@ -102,11 +102,9 @@ async def search_linkedin(keywords: list, location: str,
                            max_results: int = 25,
                            li_session_cookie: str = None) -> list:
     """
-    Search LinkedIn Jobs for management roles.
+    Search LinkedIn Jobs using one browser session for all keywords.
     Returns list of raw job dicts ready for analysis.
-
-    NOTE: Requires LinkedIn to be logged in OR a valid li_at session cookie.
-    The browser window will be visible so Randy can log in manually if needed.
+    Returns None if authentication fails (expired cookie).
     """
     try:
         from playwright.async_api import async_playwright
@@ -114,28 +112,15 @@ async def search_linkedin(keywords: list, location: str,
         logger.error("Playwright not installed. Run: pip install playwright && playwright install chromium")
         return []
 
-    jobs = []
-    query = ' '.join(keywords)
     from urllib.parse import quote_plus
-    encoded_query = quote_plus(query)
-    encoded_location = quote_plus(location)
 
-    # LinkedIn public guest search URL (works without login)
-    url = (
-        f"https://www.linkedin.com/jobs/search/"
-        f"?keywords={encoded_query}"
-        f"&location={encoded_location}"
-        f"&f_JT=F"           # Full-time
-        f"&f_TPR=r604800"    # Posted last 7 days
-        f"&sortBy=DD"        # Most recent
-        f"&position=1&pageNum=0"
-    )
+    all_jobs = []
+    seen_urls = set()
 
     async with async_playwright() as p:
         browser, context = await _get_browser(p, headless=False)
-        page = await context.new_page()
 
-        # Set cookie if provided for authenticated search
+        # Set cookie once for the whole session
         if li_session_cookie:
             await context.add_cookies([{
                 'name': 'li_at',
@@ -145,218 +130,224 @@ async def search_linkedin(keywords: list, location: str,
             }])
             logger.info("LinkedIn session cookie set")
 
+        page = await context.new_page()
+        auth_checked = False
+
         try:
-            logger.info(f"Searching LinkedIn: '{query}' in '{location}'")
-            logger.info(f"URL: {url}")
-            try:
-                await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            except Exception as nav_err:
-                err_msg = str(nav_err)
-                if 'ERR_TOO_MANY_REDIRECTS' in err_msg:
-                    logger.error(
-                        "LinkedIn session cookie is expired or invalid (redirect loop). "
-                        "Go to Settings and update your li_at cookie from Chrome DevTools."
-                    )
-                    from . import notifier
-                    notifier.notify_config_warning(
-                        "LinkedIn Cookie Expired",
-                        "Your LinkedIn session cookie is invalid. Update it in Settings to resume searching."
-                    )
-                    return None  # None signals auth failure (vs [] for no results)
-                raise  # Re-raise other navigation errors
+            for keyword in keywords:
+                encoded_query = quote_plus(keyword)
+                encoded_location = quote_plus(location)
+                url = (
+                    f"https://www.linkedin.com/jobs/search/"
+                    f"?keywords={encoded_query}"
+                    f"&location={encoded_location}"
+                    f"&f_JT=F&f_TPR=r604800&sortBy=DD&position=1&pageNum=0"
+                )
 
-            await asyncio.sleep(random.uniform(3, 5))
-
-            current_url = page.url
-            logger.info(f"Landed on: {current_url}")
-
-            # Check if redirected to auth wall
-            if 'authwall' in current_url or 'login' in current_url or 'checkpoint' in current_url:
-                logger.warning("LinkedIn requires login. Waiting up to 90s for manual login...")
-                for i in range(90):
-                    await asyncio.sleep(1)
-                    if 'linkedin.com/jobs' in page.url:
-                        logger.info("Login detected, continuing search")
-                        await asyncio.sleep(2)
-                        break
-                    if i == 89:
-                        logger.error("Login timeout - no login detected after 90s")
-
-            # Scroll to load more results
-            for scroll in range(4):
-                await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-                await asyncio.sleep(random.uniform(1.5, 3))
-                # Click "See more jobs" button if present
+                logger.info(f"Searching LinkedIn: '{keyword}' in '{location}'")
                 try:
-                    see_more = await page.query_selector('button.infinite-scroller__show-more-button, button[aria-label*="more jobs"]')
-                    if see_more:
-                        await see_more.click()
-                        await asyncio.sleep(2)
-                except:
-                    pass
+                    await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+                except Exception as nav_err:
+                    if 'ERR_TOO_MANY_REDIRECTS' in str(nav_err):
+                        logger.error(
+                            "LinkedIn session cookie is expired or invalid (redirect loop). "
+                            "Update your li_at cookie in Settings."
+                        )
+                        from . import notifier
+                        notifier.notify_config_warning(
+                            "LinkedIn Cookie Expired",
+                            "Your LinkedIn session cookie is invalid. Update it in Settings."
+                        )
+                        return None
+                    raise
 
-            # Try multiple selector strategies (LinkedIn changes these frequently)
-            card_selectors = [
-                'ul.jobs-search__results-list li',            # Guest/public page
-                '.job-search-card',                            # Guest page alt
-                '.jobs-search-results__list-item',             # Logged-in page
-                'div.job-card-container',                      # Logged-in alt
-                '.scaffold-layout__list-item',                 # Newer logged-in layout
-                'li[data-occludable-job-id]',                  # Data attribute approach
-                '.job-card-list',                              # Another variant
-            ]
+                await asyncio.sleep(random.uniform(3, 5))
+                current_url = page.url
 
-            job_cards = []
-            used_selector = ''
-            for sel in card_selectors:
-                job_cards = await page.query_selector_all(sel)
-                if job_cards:
-                    used_selector = sel
-                    break
+                # Check auth wall on first keyword only
+                if not auth_checked:
+                    if 'authwall' in current_url or 'login' in current_url or 'checkpoint' in current_url:
+                        logger.warning("LinkedIn requires login. Waiting up to 90s for manual login...")
+                        for i in range(90):
+                            await asyncio.sleep(1)
+                            if 'linkedin.com/jobs' in page.url:
+                                logger.info("Login detected, continuing search")
+                                await asyncio.sleep(2)
+                                break
+                            if i == 89:
+                                logger.error("Login timeout - no login detected after 90s")
+                                return None
+                    auth_checked = True
 
-            logger.info(f"Found {len(job_cards)} job cards using selector: '{used_selector}'")
+                logger.info(f"Landed on: {page.url}")
 
-            if not job_cards:
-                # Log the page structure to help debug
-                page_text = await page.inner_text('body')
-                logger.warning(f"No job cards found. Page text preview: {page_text[:500]}")
-                # Try a generic fallback: find all job links
-                all_links = await page.query_selector_all('a[href*="/jobs/view/"]')
-                logger.info(f"Fallback: found {len(all_links)} links containing /jobs/view/")
-
-                # Extract jobs from raw links as last resort
-                seen_urls = set()
-                for link_el in all_links[:max_results]:
+                # Scroll to load more results
+                for scroll in range(4):
+                    await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+                    await asyncio.sleep(random.uniform(1.5, 3))
                     try:
-                        href = await link_el.get_attribute('href') or ''
-                        if '/jobs/view/' not in href:
-                            continue
-                        clean_href = href.split('?')[0]
-                        if clean_href in seen_urls:
-                            continue
-                        seen_urls.add(clean_href)
+                        see_more = await page.query_selector('button.infinite-scroller__show-more-button, button[aria-label*="more jobs"]')
+                        if see_more:
+                            await see_more.click()
+                            await asyncio.sleep(2)
+                    except:
+                        pass
 
-                        text = (await link_el.inner_text()).strip()
-                        if not text or len(text) < 3:
-                            continue
+                # Extract jobs from this keyword's results
+                keyword_jobs = await _extract_linkedin_jobs(page, location, max_results)
+                for job in keyword_jobs:
+                    if job['url'] not in seen_urls:
+                        seen_urls.add(job['url'])
+                        all_jobs.append(job)
 
-                        if not clean_href.startswith('http'):
-                            clean_href = 'https://www.linkedin.com' + clean_href
+                logger.info(f"  LinkedIn '{keyword}': {len(keyword_jobs)} jobs ({len(all_jobs)} total unique)")
 
-                        jobs.append({
-                            'job_id':    _make_job_id('linkedin', clean_href),
-                            'title':     text,
-                            'company':   '',
-                            'location':  location,
-                            'platform':  'linkedin',
-                            'url':       clean_href,
-                            'description': '',
-                            'posted_date': '',
-                            'salary':    '',
-                            'job_type':  'Full-time',
-                        })
-                    except Exception as e:
-                        logger.debug(f"Error parsing fallback link: {e}")
-            else:
-                # Standard card-based extraction with multiple selector options
-                title_selectors = [
-                    '.base-search-card__title',
-                    '.job-card-list__title',
-                    'a.job-card-container__link span',
-                    'a.job-card-list__title--link span',
-                    '.artdeco-entity-lockup__title span',
-                    'h3',
-                ]
-                company_selectors = [
-                    '.base-search-card__subtitle',
-                    '.job-card-container__primary-description',
-                    '.job-card-container__company-name',
-                    '.artdeco-entity-lockup__subtitle span',
-                    'h4 a',
-                    'h4',
-                ]
-                location_selectors = [
-                    '.job-search-card__location',
-                    '.job-card-container__metadata-item',
-                    '.job-card-container__metadata-wrapper li',
-                    '.artdeco-entity-lockup__caption span',
-                ]
-                link_selectors = [
-                    'a.base-card__full-link',
-                    'a.job-card-list__title',
-                    'a.job-card-container__link',
-                    'a[href*="/jobs/view/"]',
-                    'a',
-                ]
-
-                for card in job_cards[:max_results]:
-                    try:
-                        title = ''
-                        company = ''
-                        loc = ''
-                        link = ''
-
-                        for sel in title_selectors:
-                            el = await card.query_selector(sel)
-                            if el:
-                                title = (await el.inner_text()).strip()
-                                if title:
-                                    break
-
-                        for sel in company_selectors:
-                            el = await card.query_selector(sel)
-                            if el:
-                                company = (await el.inner_text()).strip()
-                                if company:
-                                    break
-
-                        for sel in location_selectors:
-                            el = await card.query_selector(sel)
-                            if el:
-                                loc = (await el.inner_text()).strip()
-                                if loc:
-                                    break
-
-                        for sel in link_selectors:
-                            el = await card.query_selector(sel)
-                            if el:
-                                link = await el.get_attribute('href') or ''
-                                if '/jobs/view/' in link:
-                                    break
-                                link = ''  # Reset if not a job link
-
-                        if not title or not link:
-                            continue
-
-                        # Clean up the URL
-                        if not link.startswith('http'):
-                            link = 'https://www.linkedin.com' + link
-                        link = link.split('?')[0]
-                        job_id = _make_job_id('linkedin', link)
-
-                        jobs.append({
-                            'job_id':    job_id,
-                            'title':     title,
-                            'company':   company,
-                            'location':  loc or location,
-                            'platform':  'linkedin',
-                            'url':       link,
-                            'description': '',
-                            'posted_date': '',
-                            'salary':    '',
-                            'job_type':  'Full-time',
-                        })
-
-                    except Exception as e:
-                        logger.debug(f"Error parsing LinkedIn card: {e}")
-                        continue
+                # Brief delay between keywords to avoid rate limiting
+                await asyncio.sleep(random.uniform(1, 3))
 
         except Exception as e:
             logger.error(f"LinkedIn search error: {e}", exc_info=True)
         finally:
             await browser.close()
 
-    logger.info(f"LinkedIn search found {len(jobs)} jobs")
+    logger.info(f"LinkedIn search found {len(all_jobs)} total unique jobs")
+    return all_jobs
+
+
+async def _extract_linkedin_jobs(page, location: str, max_results: int = 25) -> list:
+    """Extract job listings from a LinkedIn search results page."""
+    jobs = []
+
+    # Try multiple selector strategies (LinkedIn changes these frequently)
+    card_selectors = [
+        'ul.jobs-search__results-list li',
+        '.job-search-card',
+        '.jobs-search-results__list-item',
+        'div.job-card-container',
+        '.scaffold-layout__list-item',
+        'li[data-occludable-job-id]',
+        '.job-card-list',
+    ]
+
+    job_cards = []
+    used_selector = ''
+    for sel in card_selectors:
+        job_cards = await page.query_selector_all(sel)
+        if job_cards:
+            used_selector = sel
+            break
+
+    logger.info(f"Found {len(job_cards)} job cards using selector: '{used_selector}'")
+
+    if not job_cards:
+        page_text = await page.inner_text('body')
+        logger.warning(f"No job cards found. Page text preview: {page_text[:500]}")
+        # Fallback: find all job links
+        all_links = await page.query_selector_all('a[href*="/jobs/view/"]')
+        logger.info(f"Fallback: found {len(all_links)} links containing /jobs/view/")
+
+        seen = set()
+        for link_el in all_links[:max_results]:
+            try:
+                href = await link_el.get_attribute('href') or ''
+                if '/jobs/view/' not in href:
+                    continue
+                clean_href = href.split('?')[0]
+                if clean_href in seen:
+                    continue
+                seen.add(clean_href)
+
+                text = (await link_el.inner_text()).strip()
+                if not text or len(text) < 3:
+                    continue
+                if not clean_href.startswith('http'):
+                    clean_href = 'https://www.linkedin.com' + clean_href
+
+                jobs.append({
+                    'job_id':    _make_job_id('linkedin', clean_href),
+                    'title':     text,
+                    'company':   '',
+                    'location':  location,
+                    'platform':  'linkedin',
+                    'url':       clean_href,
+                    'description': '',
+                    'posted_date': '',
+                    'salary':    '',
+                    'job_type':  'Full-time',
+                })
+            except Exception as e:
+                logger.debug(f"Error parsing fallback link: {e}")
+    else:
+        title_selectors = [
+            '.base-search-card__title', '.job-card-list__title',
+            'a.job-card-container__link span', 'a.job-card-list__title--link span',
+            '.artdeco-entity-lockup__title span', 'h3',
+        ]
+        company_selectors = [
+            '.base-search-card__subtitle', '.job-card-container__primary-description',
+            '.job-card-container__company-name', '.artdeco-entity-lockup__subtitle span',
+            'h4 a', 'h4',
+        ]
+        location_selectors = [
+            '.job-search-card__location', '.job-card-container__metadata-item',
+            '.job-card-container__metadata-wrapper li', '.artdeco-entity-lockup__caption span',
+        ]
+        link_selectors = [
+            'a.base-card__full-link', 'a.job-card-list__title',
+            'a.job-card-container__link', 'a[href*="/jobs/view/"]', 'a',
+        ]
+
+        for card in job_cards[:max_results]:
+            try:
+                title = company = loc = link = ''
+
+                for sel in title_selectors:
+                    el = await card.query_selector(sel)
+                    if el:
+                        title = (await el.inner_text()).strip()
+                        if title: break
+
+                for sel in company_selectors:
+                    el = await card.query_selector(sel)
+                    if el:
+                        company = (await el.inner_text()).strip()
+                        if company: break
+
+                for sel in location_selectors:
+                    el = await card.query_selector(sel)
+                    if el:
+                        loc = (await el.inner_text()).strip()
+                        if loc: break
+
+                for sel in link_selectors:
+                    el = await card.query_selector(sel)
+                    if el:
+                        link = await el.get_attribute('href') or ''
+                        if '/jobs/view/' in link: break
+                        link = ''
+
+                if not title or not link:
+                    continue
+
+                if not link.startswith('http'):
+                    link = 'https://www.linkedin.com' + link
+                link = link.split('?')[0]
+
+                jobs.append({
+                    'job_id':    _make_job_id('linkedin', link),
+                    'title':     title,
+                    'company':   company,
+                    'location':  loc or location,
+                    'platform':  'linkedin',
+                    'url':       link,
+                    'description': '',
+                    'posted_date': '',
+                    'salary':    '',
+                    'job_type':  'Full-time',
+                })
+            except Exception as e:
+                logger.debug(f"Error parsing LinkedIn card: {e}")
+
     return jobs
 
 
