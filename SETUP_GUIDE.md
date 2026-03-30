@@ -1,103 +1,202 @@
-# JobApplicationBot – Randy Walker
+# Setup Guide
 
-## Quick Start
+This guide walks you through setting up JobApplicationBot on your machine.
 
-1. **Run setup.bat** (first time only)
-2. **Copy your 4 PDF resumes** to the `resumes/` folder with these exact names:
-   - `2025 Randy Walker - IT Executive.pdf`
-   - `2025 Randy Walker - Tech Leader.pdf`
-   - `2025 Randy Walker - Cloud.pdf`
-   - `2025 Randy Walker - Cloud Contract.pdf`
-3. **Run run.bat** – the dashboard opens at `http://localhost:5000`
-4. **Open Settings** and configure:
-   - Your LinkedIn session cookie (for job searching)
-   - Email settings (for job alert monitoring + notifications)
+## Prerequisites
 
----
+- Python 3.10+ installed and on your PATH
+- Git (to clone the repo)
+- A LinkedIn account (for job searching)
+- Chrome or Chromium browser (Playwright installs its own, but having Chrome helps for getting cookies)
 
-## Resume Selection Logic
+## Step 1: Clone and Install
 
-| Situation | Resume Used |
-|---|---|
-| Indian IT staffing firm detected | Cloud Contract (screening email/phone) |
-| VP / CxO / SVP title | IT Executive |
-| Cloud / Azure / Infrastructure / DevOps title | Cloud |
-| Everything else (IT Manager, Director, etc.) | Tech Leader |
+```bash
+git clone https://github.com/TheSaltyKorean/JobApplications.git
+cd JobApplications
+pip install -r requirements.txt
+playwright install chromium
+```
 
-**Indian firm detection** looks for: known Indian IT firm names (Infosys, Wipro, TCS, HCL, etc.), C2C/corp-to-corp patterns, H1B transfer mentions, and other staffing patterns. When detected, the `jobs.randywalker@outlook.com` email and `(479) 871-2172` phone are used automatically.
+On Windows, you can run `.\install.ps1` instead which handles everything.
 
----
+## Step 2: Create Your Profile
 
-## Q&A Automation (How Claude Answers Questions)
+Copy the template and fill in your details:
 
-The app tries these methods in order:
+```bash
+cp config/profile.template.yaml config/profile.yaml
+```
 
-1. **Pre-built answers** – Common questions (salary, authorization, relocation, etc.) are answered instantly from your profile data
-2. **Claude Code CLI** – If `claude` is installed, questions are piped directly to it — fully automated
-3. **Anthropic API key** – If set in Settings, calls the API directly
-4. **Clipboard + Claude.ai** – If none of the above: prompt is copied to clipboard, Claude.ai opens in your browser, you paste and return the answer at `http://localhost:5000/answer`
+Open `config/profile.yaml` in any text editor. Fill in every section:
 
-To check if Claude CLI is installed, open a terminal and type: `claude --version`
+### Contact Info
 
----
+```yaml
+contact:
+  first_name: "Jane"
+  last_name: "Smith"
+  email_primary: "jane.smith@email.com"
+  email_screening: "jane.jobs@email.com"    # Optional separate email for staffing firms
+  phone_primary: "(555) 123-4567"
+  phone_screening: "(555) 987-6543"          # Optional separate phone
+  city: "Austin"
+  state: "TX"
+  state_full: "Texas"
+  zip: "78701"
+  linkedin: "https://www.linkedin.com/in/janesmith"
+  authorized_to_work: true
+  requires_sponsorship: false
+  willing_to_relocate: false
+  preferred_work_type: "Hybrid or Remote"
+```
 
-## Getting Your LinkedIn Cookie
+### Resumes
 
-1. Log into LinkedIn in Chrome
-2. Press F12 → Application tab → Cookies → `www.linkedin.com`
-3. Find the `li_at` cookie and copy its value
-4. Paste it in Settings → LinkedIn Session Cookie
+List paths to your PDF resumes. The bot picks the right one based on the job:
 
-This lets the bot search and apply on your behalf without triggering re-login.
+```yaml
+resumes:
+  executive: "resumes/Jane Smith - Executive.pdf"
+  it_manager: "resumes/Jane Smith - Tech Leader.pdf"
+  cloud: "resumes/Jane Smith - Cloud.pdf"
+  contract: "resumes/Jane Smith - Contract.pdf"
+```
 
----
+At minimum, provide an `it_manager` resume — it's the default fallback.
 
-## Job Filtering Rules
+### Skills
 
-- **Role type**: Only management roles are queued (Manager, Director, VP, Head of, etc.). Individual contributor roles (Engineer, Analyst, Specialist, etc.) are auto-skipped.
-- **Match score**: Only jobs with 50%+ skill match are queued. You can change this in Settings.
-- **Duplicates**: Already-seen job URLs are ignored.
-- **Indian firms**: Automatically flagged and use the Contract resume.
+List your technical and soft skills. The bot matches these against job descriptions:
 
----
+```yaml
+skills:
+  technical:
+    - "AWS"
+    - "Azure"
+    - "Python"
+    - "Terraform"
+    - "Kubernetes"
+  soft:
+    - "Team Leadership"
+    - "Budget Management"
+    - "Vendor Relations"
+```
 
-## Email Monitoring
+### Common Answers
 
-Forward your LinkedIn/Indeed job alert emails to `randy.walker@live.com`. The app checks your inbox every 30 minutes, extracts job URLs, analyzes them, and adds qualifying ones to your queue.
+Pre-build answers for frequent screening questions so the bot can answer them instantly:
 
-Configure IMAP in Settings → Email. Use an **App Password** (not your main password).
+```yaml
+common_answers:
+  salary_expectation: "180000"
+  salary_min: "150000"
+  hourly_rate: "100"
+  work_authorization: "Yes"
+  sponsorship_required: "No"
+  willing_to_relocate: "No, but open to remote"
+  start_date: "2 weeks notice"
+  notice_period: "2 weeks"
+  years_of_experience: "20"
+  management_experience: "10 years managing teams of 5-50"
+  highest_education: "Bachelor's in Computer Science"
+  remote_preference: "Remote or Hybrid"
+  veteran_status: "Not a veteran"
+  disability_status: "No"
+  gender: "Prefer not to say"
+  ethnicity: "Prefer not to say"
+```
 
-For Outlook/Live: https://account.microsoft.com/security → App passwords
+## Step 3: Add Your Resumes
 
----
+Create the `resumes/` directory and place your PDF files there:
 
-## Automation Levels
+```bash
+mkdir resumes
+# Copy your resume PDFs into this directory
+```
 
-| Setting | Behavior |
-|---|---|
-| Default | App finds jobs → you review → you queue → you click Apply |
-| Auto-apply OFF | App finds + analyzes, you approve each application |
-| Auto-apply ON | Fully automatic: finds, analyzes, applies with no review |
+Make sure the filenames match exactly what's in your `profile.yaml`.
 
-Start with Auto-apply OFF until you're comfortable with how it works.
+## Step 4: Start the App
 
----
+```bash
+python main.py
+```
 
-## Supported Job Sites
+The dashboard opens in your browser at `http://localhost:5000`.
 
-- **LinkedIn** (Easy Apply) – Most automated
-- **Indeed** (Indeed Apply) – Highly automated
-- **Workday** (any `*.myworkdayjobs.com` URL) – Automated form filling
-- **Other sites** – Job imported + analyzed; application may need manual steps
+## Step 5: Configure Settings
 
----
+In the web dashboard, go to **Settings** and configure:
 
-## Troubleshooting
+### LinkedIn Cookie (Required for LinkedIn search)
 
-**LinkedIn shows login page**: Your `li_at` cookie may have expired. Log into LinkedIn again and grab a fresh cookie value.
+1. Open Chrome and log into LinkedIn
+2. Open DevTools (F12 or Ctrl+Shift+I)
+3. Go to Application tab, then Cookies, then `linkedin.com`
+4. Find the `li_at` cookie and copy its value
+5. Paste it into the LinkedIn Session Cookie field in Settings
 
-**Application failed**: Check the job's Notes in the dashboard. The browser window stays open so you can complete it manually if needed.
+This cookie expires periodically — you'll need to refresh it occasionally.
 
-**Desktop notifications not working**: Make sure Python has notification permissions in Windows Settings → Notifications.
+### ATS Credentials (Optional but recommended)
 
-**Claude CLI not found**: Install from https://docs.anthropic.com/en/docs/claude-code or set an Anthropic API key in Settings.
+Most job applications redirect to ATS platforms (Workday, Taleo, etc.) that require an account. You can pre-set your credentials in Settings:
+
+1. Scroll to "ATS Platform Credentials"
+2. Select the platform, enter your email, username (if different from email), and password
+3. Click Add
+
+If you leave the password blank, the bot auto-generates a secure one. The bot also auto-creates accounts when it encounters a new ATS during applications.
+
+**Taleo note**: Oracle/Taleo uses a username for login, not your email. Make sure to fill in the Username field.
+
+### Email Notifications (Optional)
+
+Configure IMAP to monitor your inbox for job alert emails, and SMTP to receive notifications. Quick presets are available for Outlook/Live and Gmail.
+
+For Outlook: use an App Password from your Microsoft account settings.
+For Gmail: enable 2FA and create an App Password.
+
+### Claude AI (Optional)
+
+For fully automated screening question answers:
+
+- **Best**: Install Claude CLI (`npm install -g @anthropic-ai/claude-code`)
+- **Good**: Enter an Anthropic API key in Settings
+- **Fallback**: The bot copies questions to your clipboard and you paste answers via Claude.ai
+
+## Step 6: Search for Jobs
+
+1. Click **Search** in the nav bar
+2. Enter your target job titles (one per line)
+3. Set your location
+4. Check LinkedIn and/or Indeed
+5. Click Search
+
+Jobs appear in the Jobs list as they're processed. The bot filters out irrelevant roles and scores each job against your skills.
+
+## Step 7: Apply
+
+Review jobs in the **Jobs** page. For each one you want to apply to:
+
+- Click **Queue** to add it to the batch queue, then click **Apply Queue** to process all at once
+- Or click **Apply Now** to apply immediately
+
+The bot opens a browser, fills out the application, uploads your resume, and answers screening questions.
+
+## Network Access
+
+The app binds to `0.0.0.0:5000` so you can access it from any device on your local network. Just use `http://<server-ip>:5000` from another computer or phone.
+
+## Auto-Search
+
+Set a search interval in Settings (e.g., every 6 hours) to have the bot automatically search for new jobs in the background. New jobs appear in the dashboard with a notification.
+
+## Stopping the App
+
+Use any of these methods:
+- Click **Stop** in the navbar
+- Press Ctrl+C in the terminal
+- Visit `http://localhost:5000/api/shutdown`

@@ -397,15 +397,16 @@ def api_ats_credentials():
     data = request.get_json()
     platform = data.get('platform', '')
     email = data.get('email', '')
+    username = data.get('username', '')
     password = data.get('password', '')
 
     if not platform or not email:
         return jsonify({'ok': False, 'error': 'Platform and email required'})
 
     if password:
-        ats_credentials.set_credentials(platform, email, password)
+        ats_credentials.set_credentials(platform, email, password, username)
     else:
-        ats_credentials.get_or_create_credentials(platform, email)
+        ats_credentials.get_or_create_credentials(platform, email, username)
 
     return jsonify({'ok': True})
 
@@ -454,6 +455,14 @@ def api_run_queue():
 
     threading.Thread(target=run_all, daemon=True).start()
     return jsonify({'message': f"Processing {len(queued)} queued applications..."})
+
+
+@app.route('/api/notifications')
+def api_notifications():
+    """Poll for new web notifications (replaces system tray)."""
+    since_id = int(request.args.get('since', 0))
+    notifications = notifier.get_web_notifications(since_id)
+    return jsonify(notifications)
 
 
 @app.route('/api/shutdown', methods=['POST', 'GET'])

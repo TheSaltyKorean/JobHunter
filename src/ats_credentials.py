@@ -139,27 +139,35 @@ def detect_company_platform_key(url: str) -> str:
 def get_credentials(platform: str) -> dict:
     """
     Get stored credentials for a platform.
-    Returns {'email': '...', 'password': '...'} or empty dict if none stored.
+    Returns {'email': '...', 'username': '...', 'password': '...'} or empty dict if none stored.
+    Username falls back to email if not set.
     """
     creds = _load_creds()
-    return creds.get('platforms', {}).get(platform, {})
+    entry = creds.get('platforms', {}).get(platform, {})
+    if entry and not entry.get('username'):
+        entry['username'] = entry.get('email', '')
+    return entry
 
 
-def get_or_create_credentials(platform: str, email: str) -> dict:
+def get_or_create_credentials(platform: str, email: str, username: str = '') -> dict:
     """
     Get existing credentials for a platform, or create new ones with
-    a generated password. Returns {'email': '...', 'password': '...'}.
+    a generated password. Returns {'email': '...', 'username': '...', 'password': '...'}.
     """
     creds = _load_creds()
     platforms = creds.get('platforms', {})
 
     if platform in platforms and platforms[platform].get('password'):
-        return platforms[platform]
+        entry = platforms[platform]
+        if not entry.get('username'):
+            entry['username'] = entry.get('email', '')
+        return entry
 
     # Auto-generate a new password
     password = generate_password()
     entry = {
         'email': email,
+        'username': username or email,
         'password': password,
         'created': datetime.now().isoformat(),
         'platform_name': ATS_PLATFORMS.get(platform, {}).get('name', platform),
@@ -184,12 +192,13 @@ def get_or_create_credentials(platform: str, email: str) -> dict:
     return entry
 
 
-def set_credentials(platform: str, email: str, password: str):
+def set_credentials(platform: str, email: str, password: str, username: str = ''):
     """Manually set credentials for a platform."""
     creds = _load_creds()
     platforms = creds.get('platforms', {})
     platforms[platform] = {
         'email': email,
+        'username': username or email,
         'password': password,
         'platform_name': ATS_PLATFORMS.get(platform, {}).get('name', platform),
         'updated': datetime.now().isoformat(),
@@ -205,6 +214,7 @@ def get_all_platforms() -> dict:
     for platform, info in creds.get('platforms', {}).items():
         result[platform] = {
             'email': info.get('email', ''),
+            'username': info.get('username', ''),
             'password_set': bool(info.get('password')),
             'platform_name': info.get('platform_name', platform),
             'created': info.get('created', ''),

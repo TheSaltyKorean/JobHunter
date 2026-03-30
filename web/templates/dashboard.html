@@ -125,14 +125,18 @@
 {% block scripts %}
 <script>
 function runQueue() {
-  if (!confirm('Apply to all queued jobs now?')) return;
-  fetch('/api/run-queue', {method: 'POST'})
-    .then(r => r.json())
-    .then(d => alert(d.message));
+  inlineConfirm('Apply to all queued jobs now?').then(ok => {
+    if (!ok) return;
+    fetch('/api/run-queue', {method: 'POST'})
+      .then(r => r.json())
+      .then(d => showToast(d.message, 'success'));
+  });
 }
 
 function skipJob(id) {
-  if (!confirm('Skip this job?')) return;
+  // Instant skip — no confirmation needed, same as jobs page dismiss
+  const row = document.querySelector(`button[onclick="skipJob(${id})"]`);
+  if (row) { const tr = row.closest('tr'); if (tr) tr.style.opacity = '0.3'; }
   fetch(`/api/job/${id}/status`, {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},

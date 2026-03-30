@@ -20,7 +20,7 @@
       <a href="{{ url_for('add_url') }}" class="nav-link {% if request.endpoint=='add_url' %}active{% endif %}">Add URL</a>
       <a href="{{ url_for('answer') }}" class="nav-link {% if request.endpoint=='answer' %}active{% endif %}">Answer</a>
       <a href="{{ url_for('settings') }}" class="nav-link {% if request.endpoint=='settings' %}active{% endif %}">&#x2699; Settings</a>
-      <a href="#" class="nav-link" onclick="if(confirm('Stop the server?')) fetch('/api/shutdown').then(()=>document.body.innerHTML='<h2 style=\'text-align:center;margin-top:100px\'>Server stopped.</h2>'); return false;" style="color:#e53e3e">Stop</a>
+      <a href="#" class="nav-link" onclick="inlineConfirm('Stop the server?').then(ok => { if(ok) fetch('/api/shutdown').then(()=>document.body.innerHTML='<h2 style=\'text-align:center;margin-top:100px\'>Server stopped.</h2>'); }); return false;" style="color:#e53e3e">Stop</a>
     </div>
   </nav>
 
@@ -47,6 +47,133 @@
         setTimeout(() => t.remove(), 400);
       });
     }, 3000);
+
+    // Global toast helper — use instead of alert()
+    function showToast(message, category) {
+      category = category || 'info';
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'toast toast-' + category;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400); }, 4000);
+    }
+
+    // Global inline confirm — use instead of confirm()
+    // Returns a Promise that resolves true/false
+    function inlineConfirm(message) {
+      return new Promise(resolve => {
+        // Remove any existing confirm overlay
+        const old = document.getElementById('inline-confirm-overlay');
+        if (old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'inline-confirm-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:10000;';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'background:#1e293b;border:1px solid #334155;border-radius:10px;padding:24px 28px;max-width:400px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,0.4);';
+
+        const msg = document.createElement('p');
+        msg.style.cssText = 'color:#e2e8f0;margin:0 0 18px;font-size:1rem;line-height:1.5;';
+        msg.textContent = message;
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:10px;justify-content:center;';
+
+        const yesBtn = document.createElement('button');
+        yesBtn.textContent = 'Yes';
+        yesBtn.className = 'btn btn-success';
+        yesBtn.style.cssText = 'min-width:80px;';
+
+        const noBtn = document.createElement('button');
+        noBtn.textContent = 'Cancel';
+        noBtn.className = 'btn btn-secondary';
+        noBtn.style.cssText = 'min-width:80px;';
+
+        yesBtn.onclick = () => { overlay.remove(); resolve(true); };
+        noBtn.onclick = () => { overlay.remove(); resolve(false); };
+        overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); resolve(false); } };
+
+        btnRow.appendChild(yesBtn);
+        btnRow.appendChild(noBtn);
+        box.appendChild(msg);
+        box.appendChild(btnRow);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        yesBtn.focus();
+      });
+    }
+
+    // Global inline prompt — use instead of prompt()
+    function inlinePrompt(message, defaultValue) {
+      return new Promise(resolve => {
+        const old = document.getElementById('inline-confirm-overlay');
+        if (old) old.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'inline-confirm-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;z-index:10000;';
+
+        const box = document.createElement('div');
+        box.style.cssText = 'background:#1e293b;border:1px solid #334155;border-radius:10px;padding:24px 28px;max-width:420px;width:100%;box-shadow:0 8px 30px rgba(0,0,0,0.4);';
+
+        const msg = document.createElement('p');
+        msg.style.cssText = 'color:#e2e8f0;margin:0 0 12px;font-size:1rem;';
+        msg.textContent = message;
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'form-control';
+        input.style.cssText = 'margin-bottom:16px;';
+        input.value = defaultValue || '';
+
+        const btnRow = document.createElement('div');
+        btnRow.style.cssText = 'display:flex;gap:10px;justify-content:center;';
+
+        const okBtn = document.createElement('button');
+        okBtn.textContent = 'OK';
+        okBtn.className = 'btn btn-primary';
+        okBtn.style.cssText = 'min-width:80px;';
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = 'Cancel';
+        cancelBtn.className = 'btn btn-secondary';
+        cancelBtn.style.cssText = 'min-width:80px;';
+
+        okBtn.onclick = () => { overlay.remove(); resolve(input.value); };
+        cancelBtn.onclick = () => { overlay.remove(); resolve(null); };
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') { overlay.remove(); resolve(input.value); } });
+        overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); resolve(null); } };
+
+        btnRow.appendChild(okBtn);
+        btnRow.appendChild(cancelBtn);
+        box.appendChild(msg);
+        box.appendChild(input);
+        box.appendChild(btnRow);
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        input.focus();
+      });
+    }
+  </script>
+  <script>
+    // Poll for background notifications (replaces system tray)
+    (function() {
+      let lastId = 0;
+      function pollNotifications() {
+        fetch('/api/notifications?since=' + lastId)
+          .then(r => r.json())
+          .then(items => {
+            items.forEach(n => {
+              showToast(n.title + ': ' + n.message, n.category || 'info');
+              if (n.id > lastId) lastId = n.id;
+            });
+          })
+          .catch(() => {});
+      }
+      setInterval(pollNotifications, 5000);
+    })();
   </script>
   {% block scripts %}{% endblock %}
 </body>

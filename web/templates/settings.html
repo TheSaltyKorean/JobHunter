@@ -172,13 +172,14 @@
   <div class="card">
     <table class="jobs-table full-table" id="creds-table">
       <thead>
-        <tr><th>Platform</th><th>Email</th><th>Password</th><th>Actions</th></tr>
+        <tr><th>Platform</th><th>Email</th><th>Username</th><th>Password</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for key, cred in ats_credentials.items() %}
         <tr>
           <td><strong>{{ cred.platform_name }}</strong></td>
           <td>{{ cred.email }}</td>
+          <td>{{ cred.username or '(same as email)' }}</td>
           <td>
             {% if cred.password_set %}
               <span class="password-masked" id="pw-{{ key }}">********</span>
@@ -218,6 +219,10 @@
         <div class="form-group" style="margin:0">
           <label>Email</label>
           <input type="email" id="new-email" class="form-control" placeholder="your@email.com">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Username (if different from email)</label>
+          <input type="text" id="new-username" class="form-control" placeholder="Leave blank to use email">
         </div>
         <div class="form-group" style="margin:0">
           <label>Password (leave blank to auto-generate)</label>
@@ -290,29 +295,34 @@ function togglePw(key) {
 function addCred() {
   const platform = document.getElementById('new-platform').value;
   const email = document.getElementById('new-email').value;
+  const username = document.getElementById('new-username') ? document.getElementById('new-username').value : '';
   const password = document.getElementById('new-password').value;
-  if (!email) { alert('Enter an email address'); return; }
+  if (!email) { showToast('Enter an email address', 'error'); return; }
   fetch('/api/ats-credentials', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({platform, email, password})
+    body: JSON.stringify({platform, email, username, password})
   }).then(r => r.json()).then(d => {
     if (d.ok) location.reload();
-    else alert(d.error || 'Failed');
+    else showToast(d.error || 'Failed', 'error');
   });
 }
 
 function editCred(key) {
-  const email = prompt('Email for ' + key + ':', '');
-  if (!email) return;
-  const password = prompt('Password (leave blank to auto-generate):', '');
-  fetch('/api/ats-credentials', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({platform: key, email, password})
-  }).then(r => r.json()).then(d => {
-    if (d.ok) location.reload();
-    else alert(d.error || 'Failed');
+  inlinePrompt('Email for ' + key + ':', '').then(email => {
+    if (!email) return;
+    inlinePrompt('Username (if different from email, or leave blank):', '').then(username => {
+      inlinePrompt('Password (leave blank to auto-generate):', '').then(password => {
+        fetch('/api/ats-credentials', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({platform: key, email, username: username || '', password: password || ''})
+        }).then(r => r.json()).then(d => {
+          if (d.ok) location.reload();
+          else showToast(d.error || 'Failed', 'error');
+        });
+      });
+    });
   });
 }
 </script>

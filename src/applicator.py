@@ -83,29 +83,55 @@ async def _ats_login(page, platform: str, contact: dict) -> bool:
         logger.info(f"Auto-generated credentials for {platform}: {creds['email']}")
 
     email = creds['email']
+    username = creds.get('username', '') or email  # Taleo uses username, not email
     password = creds['password']
 
-    # Try to find and fill email/username field
+    # Try to find and fill the login identifier field
+    # Some platforms use email, others use username (e.g. Taleo)
     email_filled = False
-    email_selectors = [
-        'input[type="email"]',
-        'input[name*="email" i]', 'input[name*="username" i]', 'input[name*="user" i]',
-        'input[id*="email" i]', 'input[id*="username" i]',
-        'input[autocomplete="email"]', 'input[autocomplete="username"]',
-        'input[data-automation-id="email"]', 'input[data-automation-id="userName"]',
-        'input[aria-label*="email" i]', 'input[aria-label*="username" i]',
-        'input[placeholder*="email" i]', 'input[placeholder*="username" i]',
+
+    # First try username-specific fields (Taleo, etc.)
+    username_selectors = [
+        'input[name*="username" i]', 'input[name*="userid" i]', 'input[name*="user" i]',
+        'input[id*="username" i]', 'input[id*="userid" i]',
+        'input[autocomplete="username"]',
+        'input[data-automation-id="userName"]',
+        'input[aria-label*="username" i]', 'input[aria-label*="user id" i]',
+        'input[placeholder*="username" i]', 'input[placeholder*="user id" i]',
     ]
-    for sel in email_selectors:
+    for sel in username_selectors:
         el = await page.query_selector(sel)
         if el:
             try:
                 await el.triple_click()
-                await el.fill(email)
+                await el.fill(username)
                 email_filled = True
+                logger.debug(f"Filled username field with: {username}")
                 break
             except:
                 continue
+
+    # Then try email-specific fields
+    if not email_filled:
+        email_selectors = [
+            'input[type="email"]',
+            'input[name*="email" i]',
+            'input[id*="email" i]',
+            'input[autocomplete="email"]',
+            'input[data-automation-id="email"]',
+            'input[aria-label*="email" i]',
+            'input[placeholder*="email" i]',
+        ]
+        for sel in email_selectors:
+            el = await page.query_selector(sel)
+            if el:
+                try:
+                    await el.triple_click()
+                    await el.fill(email)
+                    email_filled = True
+                    break
+                except:
+                    continue
 
     if not email_filled:
         logger.warning(f"Could not find email/username field on {platform} login page")

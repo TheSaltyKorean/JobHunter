@@ -145,10 +145,12 @@
 })();
 
 function applyNow(id) {
-  if (!confirm('Apply to this job now? A browser window will open.')) return;
-  fetch(`/jobs/${id}/apply`, {method: 'POST'})
-    .then(r => r.json())
-    .then(d => { alert(d.message || d.error); setTimeout(() => location.reload(), 2000); });
+  inlineConfirm('Apply to this job now? A browser window will open.').then(ok => {
+    if (!ok) return;
+    fetch(`/jobs/${id}/apply`, {method: 'POST'})
+      .then(r => r.json())
+      .then(d => { showToast(d.message || d.error, d.error ? 'error' : 'success'); setTimeout(() => location.reload(), 2000); });
+  });
 }
 
 function dismiss(id) {
@@ -172,19 +174,23 @@ function restore(id) {
 
 function updateStatus(id, status) {
   const labels = {interview: 'Mark as got interview?', rejected: 'Mark as rejected?', offer: 'Mark as got offer?', ghosted: 'Mark as ghosted (no response)?'};
-  if (!confirm(labels[status] || `Change status to ${status}?`)) return;
-  fetch(`/api/job/${id}/status`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({status: status})
-  }).then(() => location.reload());
+  inlineConfirm(labels[status] || `Change status to ${status}?`).then(ok => {
+    if (!ok) return;
+    fetch(`/api/job/${id}/status`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({status: status})
+    }).then(() => location.reload());
+  });
 }
 
 function runQueue() {
-  if (!confirm('Apply to all queued jobs now?')) return;
-  fetch('/api/run-queue', {method: 'POST'})
-    .then(r => r.json())
-    .then(d => alert(d.message));
+  inlineConfirm('Apply to all queued jobs now?').then(ok => {
+    if (!ok) return;
+    fetch('/api/run-queue', {method: 'POST'})
+      .then(r => r.json())
+      .then(d => showToast(d.message, 'success'));
+  });
 }
 </script>
 {% endblock %}
