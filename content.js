@@ -444,8 +444,20 @@
     document.querySelectorAll('button[aria-haspopup="listbox"]').forEach(btn => {
       if (btn.closest('#jh-sidebar')) return;
       if (btn.offsetParent === null) return;
-      const label = extractFieldLabel(btn);
-      fields.push({ element: btn, label, fieldType: 'workday-listbox', filled: false });
+      let label = '';
+      // Workday wraps these in data-automation-id="formField-*" with a <label> child
+      const formField = btn.closest('[data-automation-id^="formField"]');
+      if (formField) {
+        const lbl = formField.querySelector('label');
+        if (lbl) label = (lbl.innerText || lbl.textContent || '').trim();
+      }
+      if (!label || /select\s*one/i.test(label)) {
+        label = extractFieldLabel(btn);
+      }
+      // Mark as filled if button already shows a real selection (not placeholder text)
+      const btnText = (btn.textContent || '').trim().toLowerCase();
+      const isFilled = btnText && !/select\s*one/i.test(btnText) && btnText !== '';
+      fields.push({ element: btn, label, fieldType: 'workday-listbox', filled: isFilled });
     });
 
     // Workday multi-select typeahead containers
@@ -622,6 +634,14 @@
   // Clicks the button to open the listbox, finds the matching option, clicks it
   function fillWorkdayListbox(btn, value) {
     const lower = value.toLowerCase().trim();
+    // Build a list of candidate values to try matching:
+    // 1. Exact value, 2. Yes/No normalization for affirmative/negative answers
+    const candidates = [lower];
+    const affirmative = /\b(yes|authorized|eligible|permit|allow|can|will|do)\b/i.test(value);
+    const negative    = /\b(no\b|not\b|unable|cannot|can't|won't|don't|decline|deny)/i.test(value);
+    if (affirmative && !negative) candidates.push('yes');
+    if (negative && !affirmative) candidates.push('no');
+
     // Click to open the dropdown listbox
     btn.click();
     // Wait a tick for the listbox to render, then find and click the option
@@ -631,20 +651,23 @@
         const listboxes = document.querySelectorAll('[role="listbox"]');
         for (const listbox of listboxes) {
           const options = listbox.querySelectorAll('[role="option"]');
-          let best = null;
-          let bestScore = 0;
-          for (const opt of options) {
-            const text = (opt.textContent || '').trim().toLowerCase();
-            if (text === lower) { best = opt; bestScore = 1000; break; }
-            if (text.includes(lower) || lower.includes(text)) {
-              const score = Math.min(text.length, lower.length) / Math.max(text.length, lower.length);
-              if (score > bestScore) { best = opt; bestScore = score; }
+          // Try each candidate value in order of preference
+          for (const candidate of candidates) {
+            let best = null;
+            let bestScore = 0;
+            for (const opt of options) {
+              const text = (opt.textContent || '').trim().toLowerCase();
+              if (text === candidate) { best = opt; bestScore = 1000; break; }
+              if (text.includes(candidate) || candidate.includes(text)) {
+                const score = Math.min(text.length, candidate.length) / Math.max(text.length, candidate.length);
+                if (score > bestScore) { best = opt; bestScore = score; }
+              }
             }
-          }
-          if (best && bestScore > 0.3) {
-            best.click();
-            resolve(true);
-            return;
+            if (best && bestScore > 0.3) {
+              best.click();
+              resolve(true);
+              return;
+            }
           }
         }
         // If no listbox found, try closing the dropdown
