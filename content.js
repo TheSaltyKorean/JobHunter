@@ -10,14 +10,31 @@
   // Skip chrome:// and extension pages
   if (location.protocol === 'chrome:' || location.protocol === 'chrome-extension:') return;
 
-  const JOB_TYPE_LABELS = {
+  // Dynamic job types — loaded from background, with hardcoded fallback
+  let JOB_TYPE_LABELS = {
     'cloud':     '☁️ Cloud & Infra',
     'it-mgmt':   '💼 IT Mgmt',
     'executive': '🏆 Executive',
     'staffing':  '🏢 Staffing',
   };
+  let JOB_TYPE_KEYS = ['cloud', 'it-mgmt', 'executive', 'staffing'];
 
-  const JOB_TYPE_KEYS = ['cloud', 'it-mgmt', 'executive', 'staffing'];
+  // Load dynamic job types from background
+  function loadJobTypes() {
+    return new Promise(resolve => {
+      chrome.runtime.sendMessage({ type: 'SUGGEST_RESUME', title: '', company: '' }, resp => {
+        if (resp?.jobTypes && resp.jobTypes.length) {
+          JOB_TYPE_LABELS = {};
+          JOB_TYPE_KEYS = [];
+          resp.jobTypes.forEach(jt => {
+            JOB_TYPE_LABELS[jt.key] = `${jt.emoji} ${jt.label}`;
+            JOB_TYPE_KEYS.push(jt.key);
+          });
+        }
+        resolve();
+      });
+    });
+  }
 
   // ── Extract job info from the current page ─────────────────────────────────
 
@@ -285,12 +302,7 @@
           <div class="jh-section-title">Resume</div>
           <div class="jh-field">
             <label class="jh-label">Job Type</label>
-            <select class="jh-select" id="jh-jobtype">
-              <option value="cloud">☁️ Cloud & Infra</option>
-              <option value="it-mgmt">💼 IT Management</option>
-              <option value="executive">🏆 Executive</option>
-              <option value="staffing">🏢 Staffing</option>
-            </select>
+            <select class="jh-select" id="jh-jobtype"></select>
           </div>
           <div class="jh-field">
             <label class="jh-label">Resume File</label>
@@ -814,7 +826,7 @@
     // Get all data from background
     const data = await new Promise(resolve => {
       chrome.runtime.sendMessage(
-        { type: 'GET_AUTOFILL_DATA', resumeType },
+        { type: 'GET_AUTOFILL_DATA', resumeType, pageUrl: location.href },
         resolve
       );
     });
@@ -976,15 +988,24 @@
   // ── Main init ──────────────────────────────────────────────────────────────
   let sidebarVisible = false;
 
-  function init() {
+  async function init() {
     if (document.getElementById('jh-sidebar')) return;
+
+    // Load dynamic job types before building UI
+    await loadJobTypes();
 
     const sidebar   = createSidebar();
     const toggleTab = createToggleTab();
 
+    // Populate job type selector from dynamic types
+    const jtSelect = document.getElementById('jh-jobtype');
+    jtSelect.innerHTML = JOB_TYPE_KEYS.map(k =>
+      `<option value="${k}">${JOB_TYPE_LABELS[k] || k}</option>`
+    ).join('');
+
     let resumeNames = {};
     let resumeFilesInfo = {};
-    let currentJobType = 'it-mgmt';
+    let currentJobType = JOB_TYPE_KEYS[0] || 'it-mgmt';
     let currentJob = null;
 
     // Load resume file info

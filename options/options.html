@@ -158,90 +158,55 @@
     .field-textarea { resize: vertical; min-height: 80px; }
     .field-select option { background: var(--bg); }
 
-    /* ── Resume rows ── */
-    .resume-list { display: flex; flex-direction: column; gap: 12px; }
-    .resume-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
+    /* ── Resume / Job Type rows ── */
+    .resume-list, .jt-list { display: flex; flex-direction: column; gap: 12px; }
+    .jt-entry {
       padding: 14px;
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 10px;
+      position: relative;
+    }
+    .jt-entry .jt-header {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    }
+    .jt-entry .jt-number {
+      background: var(--purple); color: #fff; font-size: 11px; font-weight: 700;
+      width: 24px; height: 24px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .jt-entry .jt-default-badge {
+      font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 4px;
+      background: rgba(16,185,129,0.15); color: var(--green);
+    }
+    .jt-remove {
+      position: absolute; top: 12px; right: 12px;
+      background: rgba(239,68,68,0.1); color: var(--red); border: none;
+      border-radius: 6px; font-size: 13px; width: 28px; height: 28px;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .jt-remove:hover { background: rgba(239,68,68,0.2); }
+    .jt-file-status {
+      font-size: 10px; padding: 2px 8px; border-radius: 4px; font-weight: 600; margin-left: 8px;
+    }
+    .jt-file-status.found { background: rgba(16,185,129,0.15); color: var(--green); }
+    .jt-file-status.missing { background: rgba(239,68,68,0.1); color: var(--red); }
+
+    /* ── ATS credential rows ── */
+    .cred-list { display: flex; flex-direction: column; gap: 10px; }
+    .cred-row {
+      display: flex; gap: 10px; align-items: flex-start; padding: 12px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
       flex-wrap: wrap;
     }
-    .resume-type-badge {
-      flex-shrink: 0;
-      font-size: 18px;
-      width: 32px;
-      text-align: center;
+    .cred-row .field { flex: 1; min-width: 140px; }
+    .cred-row .cred-domain-field { flex: 0 0 200px; }
+    .cred-remove {
+      flex-shrink: 0; background: rgba(239,68,68,0.1); color: var(--red);
+      border: none; border-radius: 6px; font-size: 14px; width: 30px; height: 30px;
+      cursor: pointer; margin-top: 22px; transition: background 0.15s;
     }
-    .resume-type-info { flex: 0 0 120px; }
-    .resume-type-name {
-      font-size: 12px;
-      font-weight: 700;
-      color: var(--text);
-    }
-    .resume-type-desc {
-      font-size: 11px;
-      color: var(--text3);
-      margin-top: 2px;
-    }
-    .resume-name-input {
-      flex: 1;
-      min-width: 120px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      color: var(--text);
-      font-size: 12px;
-      font-family: inherit;
-      padding: 7px 10px;
-      outline: none;
-      transition: border-color 0.15s;
-    }
-    .resume-name-input:focus { border-color: var(--purple); }
-
-    /* ── Resume file status ── */
-    .resume-file-area {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      width: 100%;
-      margin-top: 8px;
-      padding-left: 44px;
-    }
-    .resume-file-label {
-      font-size: 11px;
-      color: var(--text3);
-      min-width: 60px;
-    }
-    .resume-file-name {
-      font-size: 11px;
-      color: var(--green);
-      flex: 1;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .resume-file-name.no-file {
-      color: var(--red);
-      font-style: italic;
-    }
-    .resume-file-status {
-      font-size: 10px;
-      padding: 2px 8px;
-      border-radius: 4px;
-      font-weight: 600;
-    }
-    .resume-file-status.found {
-      background: rgba(16,185,129,0.15);
-      color: var(--green);
-    }
-    .resume-file-status.missing {
-      background: rgba(239,68,68,0.1);
-      color: var(--red);
-    }
+    .cred-remove:hover { background: rgba(239,68,68,0.2); }
 
     /* ── Detection hint ── */
     .detection-hint {
@@ -528,126 +493,77 @@
       </div>
     </div>
 
-    <!-- ATS Login Credentials card -->
+    <!-- Job Types / Resumes card (dynamic) -->
+    <div class="card">
+      <div class="card-title">Job Types &amp; Resumes</div>
+      <div class="card-subtitle">
+        Define your resume types (1–6). Each type has a name, emoji, keywords for auto-detection,
+        and a PDF resume file. The first type is the default when no keywords match.
+      </div>
+
+      <div id="jt-list" class="jt-list"></div>
+
+      <button class="btn btn-ghost" id="add-jt" style="margin-top: 12px;">+ Add Job Type</button>
+
+      <div class="detection-hint">
+        <strong>Resume files:</strong> Place PDF files in the extension's <code>resumes/</code> folder
+        using the filename you set for each type (e.g. <code>cloud.pdf</code>).
+        <br><br>
+        <strong>Auto-detection:</strong> When you open a job listing, the title and company are matched
+        against each type's keywords. The first match wins. If nothing matches, the first type is used as default.
+      </div>
+
+      <div class="card-footer">
+        <span class="saved-msg" id="jt-saved">&#10003; Job types saved</span>
+        <button class="btn btn-primary" id="save-jt">Save Job Types</button>
+      </div>
+    </div>
+
+    <!-- ATS Login Credentials card (per-domain/URL) -->
     <div class="card">
       <div class="card-title">ATS Login Credentials</div>
       <div class="card-subtitle">
-        Stored locally in your browser. Used to auto-fill sign-in and create-account pages on
-        Workday, Greenhouse, Taleo, and other ATS sites. Your email doubles as the login for most sites.
+        Set a default login for all ATS sites, then add overrides for specific domains or company portals.
+        URL-specific overrides take priority over domain defaults.
       </div>
 
-      <div class="form-grid">
-        <div class="field">
-          <label class="field-label">Login Email</label>
-          <input class="field-input" id="cred-email" type="email" placeholder="randy@example.com (same as profile email by default)">
+      <div style="margin-bottom: 16px;">
+        <div class="card-subtitle" style="margin-bottom: 10px; font-weight: 600; color: var(--text);">Default Credentials</div>
+        <div class="form-grid">
+          <div class="field">
+            <label class="field-label">Login Email</label>
+            <input class="field-input" id="cred-default-email" type="email" placeholder="randy@example.com">
+          </div>
+          <div class="field">
+            <label class="field-label">Username (Taleo, etc.)</label>
+            <input class="field-input" id="cred-default-username" type="text" placeholder="Optional">
+          </div>
+          <div class="field full">
+            <label class="field-label">Password</label>
+            <input class="field-input" id="cred-default-password" type="password" placeholder="Default password for ATS accounts">
+          </div>
         </div>
-        <div class="field">
-          <label class="field-label">Username (Taleo, etc.)</label>
-          <input class="field-input" id="cred-username" type="text" placeholder="Optional — only needed for Taleo and similar">
+      </div>
+
+      <div>
+        <div class="card-subtitle" style="margin-bottom: 10px; font-weight: 600; color: var(--text);">
+          Domain / URL Overrides
         </div>
-        <div class="field full">
-          <label class="field-label">Password</label>
-          <input class="field-input" id="cred-password" type="password" placeholder="Default password for ATS accounts">
-        </div>
+        <div id="cred-overrides-list" class="cred-list"></div>
+        <button class="btn btn-ghost" id="add-cred-override" style="margin-top: 10px;">+ Add Override</button>
       </div>
 
       <div class="detection-hint">
-        <strong>How it works:</strong> When Auto-Fill encounters a login/create-account page, it fills your email
-        (or username on Taleo) and password. If you've previously applied on a site, it logs you in.
-        If it's a new account, it fills the registration form with these credentials.
+        <strong>How matching works:</strong> When Auto-Fill encounters a login page, it checks for a URL-specific
+        override first (e.g. <code>microsoft.myworkdayjobs.com</code>), then a domain override
+        (e.g. <code>myworkdayjobs.com</code>), then falls back to your default credentials.
         <br><br>
-        <strong>Security note:</strong> Credentials are stored in Chrome's local extension storage (never synced or sent anywhere).
+        <strong>Security note:</strong> All credentials are stored locally in Chrome's extension storage (never synced or sent anywhere).
       </div>
 
       <div class="card-footer">
         <span class="saved-msg" id="cred-saved">&#10003; Credentials saved</span>
         <button class="btn btn-primary" id="save-cred">Save Credentials</button>
-      </div>
-    </div>
-
-    <!-- Resumes card -->
-    <div class="card">
-      <div class="card-title">Resumes</div>
-      <div class="card-subtitle">
-        Name each resume and upload the PDF file. JobHunter auto-selects the right one when you save a job
-        and uploads it when you auto-fill an application.
-      </div>
-
-      <div class="resume-list">
-        <!-- Cloud -->
-        <div class="resume-row" data-type="cloud">
-          <div class="resume-type-badge">☁️</div>
-          <div class="resume-type-info">
-            <div class="resume-type-name">Cloud &amp; Infrastructure</div>
-            <div class="resume-type-desc">AWS, Azure, DevOps roles</div>
-          </div>
-          <input class="resume-name-input" id="resume-cloud" type="text" placeholder="e.g. Randy Walker - Cloud Resume">
-          <div class="resume-file-area">
-            <span class="resume-file-label">PDF:</span>
-            <span class="resume-file-name no-file" id="file-name-cloud">Checking...</span>
-            <span class="resume-file-status" id="file-status-cloud"></span>
-          </div>
-        </div>
-
-        <!-- IT Management -->
-        <div class="resume-row" data-type="it-mgmt">
-          <div class="resume-type-badge">💼</div>
-          <div class="resume-type-info">
-            <div class="resume-type-name">IT Management</div>
-            <div class="resume-type-desc">Default for general IT roles</div>
-          </div>
-          <input class="resume-name-input" id="resume-it-mgmt" type="text" placeholder="e.g. Randy Walker - IT Mgmt Resume">
-          <div class="resume-file-area">
-            <span class="resume-file-label">PDF:</span>
-            <span class="resume-file-name no-file" id="file-name-it-mgmt">Checking...</span>
-            <span class="resume-file-status" id="file-status-it-mgmt"></span>
-          </div>
-        </div>
-
-        <!-- Executive -->
-        <div class="resume-row" data-type="executive">
-          <div class="resume-type-badge">🏆</div>
-          <div class="resume-type-info">
-            <div class="resume-type-name">Executive</div>
-            <div class="resume-type-desc">VP, CIO, Director-level</div>
-          </div>
-          <input class="resume-name-input" id="resume-executive" type="text" placeholder="e.g. Randy Walker - Executive Resume">
-          <div class="resume-file-area">
-            <span class="resume-file-label">PDF:</span>
-            <span class="resume-file-name no-file" id="file-name-executive">Checking...</span>
-            <span class="resume-file-status" id="file-status-executive"></span>
-          </div>
-        </div>
-
-        <!-- Staffing -->
-        <div class="resume-row" data-type="staffing">
-          <div class="resume-type-badge">🏢</div>
-          <div class="resume-type-info">
-            <div class="resume-type-name">Staffing / Contract</div>
-            <div class="resume-type-desc">Auto-detected by firm name</div>
-          </div>
-          <input class="resume-name-input" id="resume-staffing" type="text" placeholder="e.g. Randy Walker - Contract Resume">
-          <div class="resume-file-area">
-            <span class="resume-file-label">PDF:</span>
-            <span class="resume-file-name no-file" id="file-name-staffing">Checking...</span>
-            <span class="resume-file-status" id="file-status-staffing"></span>
-          </div>
-        </div>
-      </div>
-
-      <div class="detection-hint">
-        <strong>Resume files:</strong> Place your PDF files in the extension's <code>resumes/</code> folder as:
-        <code>cloud.pdf</code>, <code>it-mgmt.pdf</code>, <code>executive.pdf</code>, <code>staffing.pdf</code>.
-        <br><br>
-        <strong>Auto-detection:</strong> Executive roles identified by VP / CIO / Director.
-        Cloud roles by AWS, Azure, DevOps, Kubernetes, etc.
-        Staffing firms (Infosys, Wipro, TCS, etc.) matched by company name.
-        Everything else defaults to IT Management.
-      </div>
-
-      <div class="card-footer">
-        <span class="saved-msg" id="resumes-saved">&#10003; Resume names saved</span>
-        <button class="btn btn-primary" id="save-resumes">Save Resume Names</button>
       </div>
     </div>
 

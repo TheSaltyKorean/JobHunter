@@ -1,12 +1,12 @@
 // JobHunter — Options Page
 // ─────────────────────────────────────────────────────────────────────────────
 
-const DEFAULT_RESUMES = {
-  cloud:     'Cloud & Infrastructure Resume',
-  'it-mgmt': 'IT Management Resume',
-  executive: 'Executive Resume',
-  staffing:  'Staffing Agency Resume',
-};
+const DEFAULT_JOB_TYPES = [
+  { key: 'cloud',     label: 'Cloud & Infra',      emoji: '☁️', description: 'AWS, Azure, DevOps roles',     keywords: 'cloud,aws,azure,gcp,google cloud,infrastructure,devops,site reliability,sre,platform engineer,kubernetes,k8s,terraform,ansible,datacenter,network engineer,systems engineer,cloud architect,solutions architect,vmware,devsecops,mlops,finops,cloud security', resumeFile: 'cloud.pdf' },
+  { key: 'it-mgmt',   label: 'IT Management',      emoji: '💼', description: 'Default for general IT roles', keywords: '',                                                                                                                                                                                                                                                     resumeFile: 'it-mgmt.pdf' },
+  { key: 'executive', label: 'Executive',           emoji: '🏆', description: 'VP, CIO, Director-level',     keywords: 'vp ,vice president,cto,cio,ciso,cxo,svp,evp,chief information,chief technology,chief digital,chief data,managing director,global head,head of it,head of technology,president of,group director,it director',                                                  resumeFile: 'executive.pdf' },
+  { key: 'staffing',  label: 'Staffing / Contract', emoji: '🏢', description: 'Auto-detected by firm name',  keywords: 'infosys,wipro,tcs,tata consultancy,hcl,cognizant,tech mahindra,capgemini,kforce,apex,collabera',                                                                                                                                                           resumeFile: 'staffing.pdf' },
+];
 
 const DEFAULT_QA = {
   yearsExperience: '', workAuthorization: 'Authorized to work in the US',
@@ -17,8 +17,6 @@ const DEFAULT_QA = {
   graduationYear: '', linkedinUrl: '', githubUrl: '', websiteUrl: '',
 };
 
-const RESUME_TYPES = ['cloud', 'it-mgmt', 'executive', 'staffing'];
-
 const QA_FIELDS = [
   'yearsExperience', 'workAuthorization', 'sponsorship', 'willingToRelocate',
   'desiredSalary', 'startDate', 'veteranStatus', 'disabilityStatus',
@@ -26,11 +24,13 @@ const QA_FIELDS = [
   'linkedinUrl', 'githubUrl', 'websiteUrl',
 ];
 
+// Live job types — loaded from storage, used by experience tabs
+let currentJobTypes = [];
+
 // ── Load saved data into form ─────────────────────────────────────────────────
 function loadSettings() {
-  chrome.storage.local.get(['profile', 'resumeNames', 'qaAnswers'], r => {
+  chrome.storage.local.get(['profile', 'qaAnswers'], r => {
     const p  = r.profile || {};
-    const rn = { ...DEFAULT_RESUMES, ...(r.resumeNames || {}) };
     const qa = { ...DEFAULT_QA, ...(r.qaAnswers || {}) };
 
     // Profile fields
@@ -46,26 +46,14 @@ function loadSettings() {
     document.getElementById('title').value    = p.title    || '';
     document.getElementById('summary').value  = p.summary  || '';
 
-    // Resume name fields
-    document.getElementById('resume-cloud').value     = rn['cloud'];
-    document.getElementById('resume-it-mgmt').value   = rn['it-mgmt'];
-    document.getElementById('resume-executive').value = rn['executive'];
-    document.getElementById('resume-staffing').value  = rn['staffing'];
-
-    // Q&A fields — use merged defaults so saved values always load
+    // Q&A fields
     for (const key of QA_FIELDS) {
       const el = document.getElementById(`qa-${key}`);
-      if (el && qa[key] !== undefined) {
-        el.value = qa[key];
-      }
+      if (el && qa[key] !== undefined) el.value = qa[key];
     }
 
     updateAvatar(p.name || '');
-    console.log('JobHunter Options: loaded QA answers', qa);
   });
-
-  // Load resume file status
-  loadResumeFiles();
 }
 
 function updateAvatar(name) {
@@ -77,39 +65,245 @@ function updateAvatar(name) {
     : (parts[0]?.[0] || '?').toUpperCase();
 }
 
-// ── Resume file detection (checks directly via fetch) ───────────────────────
-async function loadResumeFiles() {
-  for (const type of RESUME_TYPES) {
-    const nameEl   = document.getElementById(`file-name-${type}`);
-    const statusEl = document.getElementById(`file-status-${type}`);
-    try {
-      const url = chrome.runtime.getURL(`resumes/${type}.pdf`);
-      const resp = await fetch(url, { cache: 'no-store' });
-      if (resp.ok) {
-        const blob = await resp.blob();
-        if (blob.size > 100 && blob.type !== 'text/html') {
-          nameEl.textContent = `${type}.pdf (${formatSize(blob.size)})`;
-          nameEl.classList.remove('no-file');
-          statusEl.textContent = 'Found';
-          statusEl.className = 'resume-file-status found';
-          continue;
-        }
-      }
-    } catch (e) {
-      console.warn(`JobHunter: Error checking ${type}.pdf:`, e);
-    }
-    nameEl.textContent = `${type}.pdf — not found in resumes/ folder`;
-    nameEl.classList.add('no-file');
-    statusEl.textContent = 'Missing';
-    statusEl.className = 'resume-file-status missing';
-  }
-}
-
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 }
+
+function escapeHtml(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function showSaved(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.opacity = '1';
+  setTimeout(() => { el.style.opacity = '0'; }, 2500);
+}
+
+// ── Job Types management ───────────────────────────────────────────────────
+function loadJobTypes() {
+  chrome.storage.local.get(['jobTypes'], r => {
+    const types = r.jobTypes && r.jobTypes.length ? r.jobTypes : DEFAULT_JOB_TYPES;
+    currentJobTypes = types;
+    const list = document.getElementById('jt-list');
+    list.innerHTML = '';
+    types.forEach((jt, i) => addJobTypeEntry(jt, i));
+    updateAddJTButton();
+    checkResumeFiles();
+  });
+}
+
+function addJobTypeEntry(jt = {}, index) {
+  const list = document.getElementById('jt-list');
+  const num = index !== undefined ? index + 1 : list.children.length + 1;
+  const entry = document.createElement('div');
+  entry.className = 'jt-entry';
+
+  entry.innerHTML = `
+    <div class="jt-header">
+      <div class="jt-number">${num}</div>
+      ${num === 1 ? '<span class="jt-default-badge">Default</span>' : ''}
+    </div>
+    <button class="jt-remove" title="Remove">✕</button>
+    <div class="exp-grid">
+      <div class="field">
+        <label class="field-label">Emoji</label>
+        <input class="field-input jt-emoji" type="text" value="${escapeHtml(jt.emoji || '📄')}" placeholder="☁️" style="width:60px;text-align:center;font-size:18px;">
+      </div>
+      <div class="field">
+        <label class="field-label">Label</label>
+        <input class="field-input jt-label" type="text" value="${escapeHtml(jt.label || '')}" placeholder="e.g. Cloud & Infra" maxlength="30">
+      </div>
+      <div class="field">
+        <label class="field-label">Short Description</label>
+        <input class="field-input jt-desc" type="text" value="${escapeHtml(jt.description || '')}" placeholder="e.g. AWS, Azure, DevOps roles" maxlength="60">
+      </div>
+      <div class="field">
+        <label class="field-label">Resume PDF Filename</label>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input class="field-input jt-file" type="text" value="${escapeHtml(jt.resumeFile || '')}" placeholder="e.g. cloud.pdf">
+          <span class="jt-file-status"></span>
+        </div>
+      </div>
+      <div class="field full">
+        <label class="field-label">Detection Keywords (comma-separated)</label>
+        <input class="field-input jt-keywords" type="text" value="${escapeHtml(jt.keywords || '')}" placeholder="cloud, aws, azure, gcp, devops...">
+      </div>
+    </div>
+  `;
+
+  entry.querySelector('.jt-remove').addEventListener('click', () => {
+    if (list.children.length <= 1) { alert('You need at least one job type.'); return; }
+    entry.remove();
+    renumberJTEntries();
+    updateAddJTButton();
+  });
+
+  list.appendChild(entry);
+}
+
+function renumberJTEntries() {
+  document.querySelectorAll('.jt-entry').forEach((entry, i) => {
+    entry.querySelector('.jt-number').textContent = i + 1;
+    // Update default badge
+    const existing = entry.querySelector('.jt-default-badge');
+    if (i === 0 && !existing) {
+      entry.querySelector('.jt-header').insertAdjacentHTML('beforeend', '<span class="jt-default-badge">Default</span>');
+    } else if (i !== 0 && existing) {
+      existing.remove();
+    }
+  });
+}
+
+function updateAddJTButton() {
+  const btn = document.getElementById('add-jt');
+  const count = document.querySelectorAll('.jt-entry').length;
+  btn.disabled = count >= 6;
+  btn.textContent = count >= 6 ? 'Maximum 6 types' : '+ Add Job Type';
+}
+
+function collectJobTypes() {
+  const types = [];
+  document.querySelectorAll('.jt-entry').forEach(entry => {
+    const emoji       = entry.querySelector('.jt-emoji').value.trim() || '📄';
+    const label       = entry.querySelector('.jt-label').value.trim();
+    const description = entry.querySelector('.jt-desc').value.trim();
+    const resumeFile  = entry.querySelector('.jt-file').value.trim();
+    const keywords    = entry.querySelector('.jt-keywords').value.trim();
+    // Auto-generate key from label
+    const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `type-${types.length}`;
+    if (label) {
+      types.push({ key, label, emoji, description, keywords, resumeFile });
+    }
+  });
+  return types;
+}
+
+async function checkResumeFiles() {
+  document.querySelectorAll('.jt-entry').forEach(async entry => {
+    const fileInput = entry.querySelector('.jt-file');
+    const statusEl  = entry.querySelector('.jt-file-status');
+    const filename  = fileInput.value.trim();
+    if (!filename) { statusEl.textContent = ''; statusEl.className = 'jt-file-status'; return; }
+    try {
+      const url = chrome.runtime.getURL(`resumes/${filename}`);
+      const resp = await fetch(url, { cache: 'no-store' });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        if (blob.size > 100 && blob.type !== 'text/html') {
+          statusEl.textContent = `Found (${formatSize(blob.size)})`;
+          statusEl.className = 'jt-file-status found';
+          return;
+        }
+      }
+    } catch (e) { /* ignore */ }
+    statusEl.textContent = 'Missing';
+    statusEl.className = 'jt-file-status missing';
+  });
+}
+
+document.getElementById('add-jt').addEventListener('click', () => {
+  if (document.querySelectorAll('.jt-entry').length >= 6) return;
+  addJobTypeEntry({}, document.querySelectorAll('.jt-entry').length);
+  updateAddJTButton();
+});
+
+document.getElementById('save-jt').addEventListener('click', () => {
+  const types = collectJobTypes();
+  if (types.length === 0) { alert('You need at least one job type with a label.'); return; }
+  if (types.length > 6) { alert('Maximum 6 job types.'); return; }
+  chrome.storage.local.set({ jobTypes: types }, () => {
+    if (chrome.runtime.lastError) {
+      alert('Save failed: ' + chrome.runtime.lastError.message);
+    } else {
+      currentJobTypes = types;
+      showSaved('jt-saved');
+      checkResumeFiles();
+    }
+  });
+});
+
+// ── ATS Login Credentials (per-domain/URL) ────────────────────────────────
+function loadCredentials() {
+  chrome.storage.local.get(['atsCredentials', 'profile'], r => {
+    let cred = r.atsCredentials || {};
+    const profile = r.profile || {};
+
+    // Migrate old flat format → new nested format
+    if (cred.email !== undefined && !cred.default) {
+      cred = { default: { email: cred.email || '', username: cred.username || '', password: cred.password || '' }, overrides: [] };
+      chrome.storage.local.set({ atsCredentials: cred });
+    }
+
+    const def = cred.default || {};
+    document.getElementById('cred-default-email').value    = def.email    || profile.email || '';
+    document.getElementById('cred-default-username').value  = def.username || '';
+    document.getElementById('cred-default-password').value  = def.password || '';
+
+    const list = document.getElementById('cred-overrides-list');
+    list.innerHTML = '';
+    (cred.overrides || []).forEach(o => addCredOverrideRow(o.domain, o.email, o.username, o.password));
+  });
+}
+
+function addCredOverrideRow(domain = '', email = '', username = '', password = '') {
+  const list = document.getElementById('cred-overrides-list');
+  const row = document.createElement('div');
+  row.className = 'cred-row';
+  row.innerHTML = `
+    <div class="field cred-domain-field">
+      <label class="field-label">Domain or URL</label>
+      <input class="field-input cred-domain" type="text" value="${escapeHtml(domain)}" placeholder="e.g. myworkdayjobs.com">
+    </div>
+    <div class="field">
+      <label class="field-label">Email</label>
+      <input class="field-input cred-email" type="email" value="${escapeHtml(email)}" placeholder="Override email">
+    </div>
+    <div class="field">
+      <label class="field-label">Username</label>
+      <input class="field-input cred-user" type="text" value="${escapeHtml(username)}" placeholder="Optional">
+    </div>
+    <div class="field">
+      <label class="field-label">Password</label>
+      <input class="field-input cred-pass" type="password" value="${escapeHtml(password)}" placeholder="Override password">
+    </div>
+    <button class="cred-remove" title="Remove">✕</button>
+  `;
+  row.querySelector('.cred-remove').addEventListener('click', () => row.remove());
+  list.appendChild(row);
+}
+
+function collectCredentials() {
+  const def = {
+    email:    document.getElementById('cred-default-email').value.trim(),
+    username: document.getElementById('cred-default-username').value.trim(),
+    password: document.getElementById('cred-default-password').value,
+  };
+  const overrides = [];
+  document.querySelectorAll('.cred-row').forEach(row => {
+    const domain   = row.querySelector('.cred-domain').value.trim();
+    const email    = row.querySelector('.cred-email').value.trim();
+    const username = row.querySelector('.cred-user').value.trim();
+    const password = row.querySelector('.cred-pass').value;
+    if (domain) overrides.push({ domain, email, username, password });
+  });
+  return { default: def, overrides };
+}
+
+document.getElementById('add-cred-override').addEventListener('click', () => addCredOverrideRow());
+
+document.getElementById('save-cred').addEventListener('click', () => {
+  const cred = collectCredentials();
+  chrome.storage.local.set({ atsCredentials: cred }, () => {
+    if (chrome.runtime.lastError) {
+      alert('Save failed: ' + chrome.runtime.lastError.message);
+    } else {
+      showSaved('cred-saved');
+    }
+  });
+});
 
 // ── Custom Q&A pair management ───────────────────────────────────────────
 function loadCustomQA() {
@@ -117,7 +311,6 @@ function loadCustomQA() {
     const list = document.getElementById('custom-qa-list');
     list.innerHTML = '';
     const pairs = r.customQA || [];
-    console.log('JobHunter Options: loaded custom QA', pairs);
     pairs.forEach(pair => addCustomQARow(pair.question, pair.answer));
   });
 }
@@ -141,10 +334,6 @@ function addCustomQARow(question = '', answer = '') {
   list.appendChild(row);
 }
 
-function escapeHtml(str) {
-  return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
 function collectCustomQA() {
   const rows = document.querySelectorAll('.custom-qa-row');
   const pairs = [];
@@ -158,27 +347,24 @@ function collectCustomQA() {
 
 document.getElementById('add-custom-qa').addEventListener('click', () => addCustomQARow());
 
-// Save custom Q&A — use chrome.storage.local DIRECTLY (no message passing)
 document.getElementById('save-custom-qa').addEventListener('click', () => {
   const pairs = collectCustomQA();
   chrome.storage.local.set({ customQA: pairs }, () => {
     if (chrome.runtime.lastError) {
-      console.error('Custom QA save error:', chrome.runtime.lastError);
       alert('Save failed: ' + chrome.runtime.lastError.message);
     } else {
-      console.log('JobHunter: Custom QA saved directly', pairs);
       showSaved('custom-qa-saved');
     }
   });
 });
 
 // ── Work Experience management ──────────────────────────────────────────
-const EXP_RESUME_TYPES = [
-  { key: 'cloud',     label: '☁️ Cloud & Infra' },
-  { key: 'it-mgmt',   label: '💼 IT Mgmt' },
-  { key: 'executive', label: '🏆 Executive' },
-  { key: 'staffing',  label: '🏢 Staffing' },
-];
+function getExpResumeTypes() {
+  // Use currently loaded job types for experience tabs
+  return currentJobTypes.length > 0
+    ? currentJobTypes.map(jt => ({ key: jt.key, label: `${jt.emoji} ${jt.label}` }))
+    : DEFAULT_JOB_TYPES.map(jt => ({ key: jt.key, label: `${jt.emoji} ${jt.label}` }));
+}
 
 function loadExperience() {
   chrome.storage.local.get(['workExperience'], r => {
@@ -202,12 +388,14 @@ function addExpEntry(exp = {}, index) {
   const entry = document.createElement('div');
   entry.className = 'exp-entry';
 
-  // Build per-resume-type tabs for title/description
+  const resumeTypes = getExpResumeTypes();
   const variants = exp.variants || {};
-  const tabButtons = EXP_RESUME_TYPES.map((rt, i) =>
+
+  const tabButtons = resumeTypes.map((rt, i) =>
     `<button class="exp-tab-btn ${i === 0 ? 'active' : ''}" data-rt="${rt.key}">${rt.label}</button>`
   ).join('');
-  const tabPanels = EXP_RESUME_TYPES.map((rt, i) => {
+
+  const tabPanels = resumeTypes.map((rt, i) => {
     const v = variants[rt.key] || {};
     return `<div class="exp-tab-panel ${i === 0 ? '' : 'exp-tab-hidden'}" data-rt="${rt.key}">
       <div class="exp-grid">
@@ -279,21 +467,24 @@ function addExpEntry(exp = {}, index) {
   });
 
   // Copy-down: when the first tab's title/desc changes, auto-fill empty tabs
-  const firstTitle = entry.querySelector('.exp-var-title[data-rt="cloud"]');
-  const firstDesc  = entry.querySelector('.exp-var-desc[data-rt="cloud"]');
-  if (firstTitle) {
-    firstTitle.addEventListener('blur', () => {
-      entry.querySelectorAll('.exp-var-title').forEach(inp => {
-        if (inp !== firstTitle && !inp.value.trim()) inp.value = firstTitle.value;
+  const firstRT = resumeTypes[0]?.key;
+  if (firstRT) {
+    const firstTitle = entry.querySelector(`.exp-var-title[data-rt="${firstRT}"]`);
+    const firstDesc  = entry.querySelector(`.exp-var-desc[data-rt="${firstRT}"]`);
+    if (firstTitle) {
+      firstTitle.addEventListener('blur', () => {
+        entry.querySelectorAll('.exp-var-title').forEach(inp => {
+          if (inp !== firstTitle && !inp.value.trim()) inp.value = firstTitle.value;
+        });
       });
-    });
-  }
-  if (firstDesc) {
-    firstDesc.addEventListener('blur', () => {
-      entry.querySelectorAll('.exp-var-desc').forEach(inp => {
-        if (inp !== firstDesc && !inp.value.trim()) inp.value = firstDesc.value;
+    }
+    if (firstDesc) {
+      firstDesc.addEventListener('blur', () => {
+        entry.querySelectorAll('.exp-var-desc').forEach(inp => {
+          if (inp !== firstDesc && !inp.value.trim()) inp.value = firstDesc.value;
+        });
       });
-    });
+    }
   }
 
   entry.querySelector('.exp-remove').addEventListener('click', () => entry.remove());
@@ -313,6 +504,7 @@ function addExpEntry(exp = {}, index) {
 }
 
 function collectExperience() {
+  const resumeTypes = getExpResumeTypes();
   const entries = [];
   document.querySelectorAll('.exp-entry').forEach(entry => {
     const company    = entry.querySelector('.exp-company').value.trim();
@@ -323,9 +515,8 @@ function collectExperience() {
     const endYear    = entry.querySelector('.exp-end-year').value.trim();
     const current    = entry.querySelector('.exp-current').checked;
 
-    // Collect per-resume-type variants
     const variants = {};
-    EXP_RESUME_TYPES.forEach(rt => {
+    resumeTypes.forEach(rt => {
       const titleEl = entry.querySelector(`.exp-var-title[data-rt="${rt.key}"]`);
       const descEl  = entry.querySelector(`.exp-var-desc[data-rt="${rt.key}"]`);
       variants[rt.key] = {
@@ -334,9 +525,8 @@ function collectExperience() {
       };
     });
 
-    // Use cloud title as the default/legacy title
-    const title = variants.cloud?.title || '';
-    const description = variants.cloud?.description || '';
+    const title = Object.values(variants).find(v => v.title)?.title || '';
+    const description = Object.values(variants).find(v => v.description)?.description || '';
 
     if (title || company) {
       entries.push({ title, company, location, startMonth, startYear, endMonth, endYear, current, description, variants });
@@ -354,32 +544,6 @@ document.getElementById('save-exp').addEventListener('click', () => {
       alert('Save failed: ' + chrome.runtime.lastError.message);
     } else {
       showSaved('exp-saved');
-    }
-  });
-});
-
-// ── ATS Login Credentials ───────────────────────────────────────────────
-function loadCredentials() {
-  chrome.storage.local.get(['atsCredentials', 'profile'], r => {
-    const cred = r.atsCredentials || {};
-    const profile = r.profile || {};
-    document.getElementById('cred-email').value    = cred.email    || profile.email || '';
-    document.getElementById('cred-username').value  = cred.username || '';
-    document.getElementById('cred-password').value  = cred.password || '';
-  });
-}
-
-document.getElementById('save-cred').addEventListener('click', () => {
-  const cred = {
-    email:    document.getElementById('cred-email').value.trim(),
-    username: document.getElementById('cred-username').value.trim(),
-    password: document.getElementById('cred-password').value,
-  };
-  chrome.storage.local.set({ atsCredentials: cred }, () => {
-    if (chrome.runtime.lastError) {
-      alert('Save failed: ' + chrome.runtime.lastError.message);
-    } else {
-      showSaved('cred-saved');
     }
   });
 });
@@ -422,7 +586,7 @@ document.getElementById('save-claude-config').addEventListener('click', () => {
 
 document.getElementById('check-claude-server').addEventListener('click', checkClaudeServer);
 
-// ── Save handlers — all use chrome.storage.local DIRECTLY ────────────────────
+// ── Save handlers ──────────────────────────────────────────────────────────
 document.getElementById('save-profile').addEventListener('click', () => {
   const profile = {
     name:     document.getElementById('name').value.trim(),
@@ -448,23 +612,6 @@ document.getElementById('save-profile').addEventListener('click', () => {
   });
 });
 
-document.getElementById('save-resumes').addEventListener('click', () => {
-  const resumeNames = {
-    cloud:     document.getElementById('resume-cloud').value.trim()     || DEFAULT_RESUMES.cloud,
-    'it-mgmt': document.getElementById('resume-it-mgmt').value.trim()   || DEFAULT_RESUMES['it-mgmt'],
-    executive: document.getElementById('resume-executive').value.trim() || DEFAULT_RESUMES.executive,
-    staffing:  document.getElementById('resume-staffing').value.trim()  || DEFAULT_RESUMES.staffing,
-  };
-  chrome.storage.local.set({ resumeNames }, () => {
-    if (chrome.runtime.lastError) {
-      alert('Save failed: ' + chrome.runtime.lastError.message);
-    } else {
-      showSaved('resumes-saved');
-    }
-  });
-});
-
-// Save Q&A — use chrome.storage.local DIRECTLY (no message passing)
 document.getElementById('save-qa').addEventListener('click', () => {
   const answers = {};
   for (const key of QA_FIELDS) {
@@ -473,21 +620,12 @@ document.getElementById('save-qa').addEventListener('click', () => {
   }
   chrome.storage.local.set({ qaAnswers: answers }, () => {
     if (chrome.runtime.lastError) {
-      console.error('QA save error:', chrome.runtime.lastError);
       alert('Save failed: ' + chrome.runtime.lastError.message);
     } else {
-      console.log('JobHunter: QA saved directly', answers);
       showSaved('qa-saved');
     }
   });
 });
-
-function showSaved(id) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.style.opacity = '1';
-  setTimeout(() => { el.style.opacity = '0'; }, 2500);
-}
 
 // ── Name → avatar live preview ───────────────────────────────────────────────
 document.getElementById('name').addEventListener('input', e => {
@@ -504,6 +642,7 @@ if (dashLink) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadSettings();
+loadJobTypes();
 loadCredentials();
 loadExperience();
 loadCustomQA();

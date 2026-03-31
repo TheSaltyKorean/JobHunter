@@ -8,6 +8,51 @@ const DEFAULT_RESUMES = {
   staffing:  'Staffing Agency Resume',
 };
 
+// Default job types — used when nothing is configured yet
+const DEFAULT_JOB_TYPES = [
+  { key: 'cloud',     label: 'Cloud & Infra',      emoji: '☁️', description: 'AWS, Azure, DevOps roles',     keywords: 'cloud,aws,azure,gcp,google cloud,infrastructure,devops,site reliability,sre,platform engineer,kubernetes,k8s,terraform,ansible,datacenter,network engineer,systems engineer,cloud architect,solutions architect,vmware,devsecops,mlops,finops,cloud security', resumeFile: 'cloud.pdf' },
+  { key: 'it-mgmt',   label: 'IT Management',      emoji: '💼', description: 'Default for general IT roles', keywords: '',                                                                                                                                                                                                                                                     resumeFile: 'it-mgmt.pdf' },
+  { key: 'executive', label: 'Executive',           emoji: '🏆', description: 'VP, CIO, Director-level',     keywords: 'vp ,vice president,cto,cio,ciso,cxo,svp,evp,chief information,chief technology,chief digital,chief data,managing director,global head,head of it,head of technology,president of,group director,it director',                                                  resumeFile: 'executive.pdf' },
+  { key: 'staffing',  label: 'Staffing / Contract', emoji: '🏢', description: 'Auto-detected by firm name',  keywords: 'infosys,wipro,tcs,tata consultancy,hcl,cognizant,tech mahindra,capgemini,kforce,apex,collabera',                                                                                                                                                           resumeFile: 'staffing.pdf' },
+];
+
+async function getJobTypes() {
+  return new Promise(resolve => {
+    chrome.storage.local.get(['jobTypes'], r => {
+      resolve(r.jobTypes && r.jobTypes.length ? r.jobTypes : DEFAULT_JOB_TYPES);
+    });
+  });
+}
+
+// Resolve ATS credentials for a given URL (URL override → domain override → default)
+async function resolveATSCredentials(url) {
+  return new Promise(resolve => {
+    chrome.storage.local.get(['atsCredentials'], r => {
+      const cred = r.atsCredentials || {};
+      // Old flat format migration
+      if (cred.email !== undefined && !cred.default) {
+        resolve({ email: cred.email || '', username: cred.username || '', password: cred.password || '' });
+        return;
+      }
+      if (!url) { resolve(cred.default || {}); return; }
+      try {
+        const hostname = new URL(url).hostname.replace(/^www\./, '');
+        const overrides = cred.overrides || [];
+        // 1. Exact hostname match
+        const exactMatch = overrides.find(o => hostname === o.domain || hostname === 'www.' + o.domain);
+        if (exactMatch) { resolve(exactMatch); return; }
+        // 2. Subdomain match (e.g. microsoft.myworkdayjobs.com matches myworkdayjobs.com)
+        const domainMatch = overrides.find(o => hostname.endsWith('.' + o.domain));
+        if (domainMatch) { resolve(domainMatch); return; }
+        // 3. Partial hostname contains (for user convenience)
+        const partialMatch = overrides.find(o => hostname.includes(o.domain) || o.domain.includes(hostname));
+        if (partialMatch) { resolve(partialMatch); return; }
+      } catch (e) { /* bad URL, fall through */ }
+      resolve(cred.default || {});
+    });
+  });
+}
+
 // Default answers for common application questions
 const DEFAULT_QA = {
   yearsExperience:    '',
@@ -231,46 +276,31 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
-// ─── Job Type Detection ─────────────────────────────────────────────────────
-
-const STAFFING_FIRMS = [
-  'infosys','wipro','tcs','tata consultancy','hcl','cognizant','tech mahindra',
-  'capgemini','syntel','hexaware','mphasis','ltimindtree','mindtree','niit',
-  'igate','mastech','persistent','virtusa','zensar','birlasoft','cyient',
-  'kforce','apex','collabera','diverse lynx','genesis10','softpath','incedo',
-  'trigent','datamatics','inforeliance','xorbit','geotemps','staffmark',
-  'pvh tech','tekskills','suncap','intellectt','technocraft',
-];
-
-const EXECUTIVE_KEYWORDS = [
-  'vp ','vice president','cto','cio','ciso','cxo','svp','evp',
-  'chief information','chief technology','chief digital','chief data',
-  'managing director','global head','head of it','head of technology',
-  'president of','group director','it director',
-];
-
-const CLOUD_KEYWORDS = [
-  'cloud','aws','azure','gcp','google cloud','infrastructure','devops',
-  'site reliability','sre','platform engineer','kubernetes','k8s','terraform',
-  'ansible','datacenter','data center','network engineer','systems engineer',
-  'cloud architect','solutions architect','cloud operations','cloudops',
-  'vmware','virtualization','devsecops','mlops','finops','cloud security',
-];
-
-function detectJobType(title, company) {
+// ─── Job Type Detection (dynamic, from configured job types) ────────────────
+async function detectJobType(title, company) {
+  const jobTypes = await getJobTypes();
   const t = (title  || '').toLowerCase();
   const c = (company || '').toLowerCase();
 
-  if (STAFFING_FIRMS.some(f => c.includes(f))) return 'staffing';
-  if (EXECUTIVE_KEYWORDS.some(k => t.includes(k))) return 'executive';
-  if (CLOUD_KEYWORDS.some(k => t.includes(k))) return 'cloud';
-  return 'it-mgmt';
+  for (const jt of jobTypes) {
+    if (!jt.keywords) continue;
+    const kwList = jt.keywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+    if (kwList.length === 0) continue;
+    if (kwList.some(k => c.includes(k)) || kwList.some(k => t.includes(k))) {
+      return jt.key;
+    }
+  }
+  return jobTypes[0]?.key || 'it-mgmt';
 }
 
 async function getResumeNames() {
+  const jobTypes = await getJobTypes();
+  const names = {};
+  jobTypes.forEach(jt => { names[jt.key] = jt.label; });
+  // Also merge any legacy resumeNames for backward compat
   return new Promise(resolve => {
     chrome.storage.local.get(['resumeNames'], r => {
-      resolve({ ...DEFAULT_RESUMES, ...(r.resumeNames || {}) });
+      resolve({ ...names, ...(r.resumeNames || {}) });
     });
   });
 }
@@ -291,10 +321,17 @@ async function getQAAnswers() {
 
 // ─── Resume file access ──────────────────────────────────────────────────
 // Resume PDFs live in resumes/ folder inside the extension directory.
-// Filenames: cloud.pdf, it-mgmt.pdf, executive.pdf, staffing.pdf
+// Filenames are configurable per job type.
+
+async function getResumeFilename(type) {
+  const jobTypes = await getJobTypes();
+  const jt = jobTypes.find(j => j.key === type);
+  return jt?.resumeFile || `${type}.pdf`;
+}
 
 async function getResumeFileInfo(type) {
-  const url = chrome.runtime.getURL(`resumes/${type}.pdf`);
+  const filename = await getResumeFilename(type);
+  const url = chrome.runtime.getURL(`resumes/${filename}`);
   try {
     const resp = await fetch(url, { cache: 'no-store' });
     if (!resp.ok) {
@@ -307,15 +344,16 @@ async function getResumeFileInfo(type) {
       console.warn(`JobHunter: resumes/${type}.pdf seems invalid (size=${blob.size}, type=${blob.type})`);
       return null;
     }
-    return { name: `${type}.pdf`, size: blob.size, url };
+    return { name: filename, size: blob.size, url };
   } catch (e) {
-    console.warn(`JobHunter: resumes/${type}.pdf fetch error:`, e.message);
+    console.warn(`JobHunter: resumes/${filename} fetch error:`, e.message);
     return null;
   }
 }
 
 async function getResumeBase64(type) {
-  const url = chrome.runtime.getURL(`resumes/${type}.pdf`);
+  const filename = await getResumeFilename(type);
+  const url = chrome.runtime.getURL(`resumes/${filename}`);
   try {
     const resp = await fetch(url, { cache: 'no-store' });
     if (!resp.ok) return null;
@@ -325,7 +363,7 @@ async function getResumeBase64(type) {
       const reader = new FileReader();
       reader.onload = () => resolve({
         data: reader.result.split(',')[1],
-        name: `${type}.pdf`,
+        name: filename,
         size: blob.size,
       });
       reader.onerror = () => resolve(null);
@@ -351,7 +389,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       }
 
       const resumeNames = await getResumeNames();
-      const jobType     = msg.job.jobType || detectJobType(msg.job.title, msg.job.company);
+      const jobType     = msg.job.jobType || await detectJobType(msg.job.title, msg.job.company);
       const resumeUsed  = msg.job.resumeUsed || resumeNames[jobType] || resumeNames['it-mgmt'];
 
       const job = {
@@ -381,8 +419,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'SUGGEST_RESUME') {
     (async () => {
       const resumeNames = await getResumeNames();
-      const jobType     = msg.jobType || detectJobType(msg.title, msg.company);
-      sendResponse({ jobType, resumeName: resumeNames[jobType], resumeNames });
+      const jobType     = msg.jobType || await detectJobType(msg.title, msg.company);
+      const jobTypes    = await getJobTypes();
+      sendResponse({ jobType, resumeName: resumeNames[jobType], resumeNames, jobTypes });
     })();
     return true;
   }
@@ -406,7 +445,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'GET_RESUME_FILES_INFO') {
     (async () => {
       const info = {};
-      for (const type of ['cloud', 'it-mgmt', 'executive', 'staffing']) {
+      const jobTypes = await getJobTypes();
+      for (const jt of jobTypes) {
+        const type = jt.key;
         const file = await getResumeFileInfo(type);
         if (file) {
           info[type] = { name: file.name, size: file.size };
@@ -452,17 +493,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const resumeNames  = await getResumeNames();
       const customQA     = await getCustomQA();
       const claudeReady  = await isClaudeServerRunning();
-      const credentials  = await new Promise(resolve => {
-        chrome.storage.local.get(['atsCredentials'], r => resolve(r.atsCredentials || {}));
-      });
+      const credentials  = await resolveATSCredentials(msg.pageUrl || '');
+      const jobTypes     = await getJobTypes();
       const workExperience = await new Promise(resolve => {
         chrome.storage.local.get(['workExperience'], r => resolve(r.workExperience || []));
       });
 
       // Get resume as base64 for the content script
-      const resumeFile = await getResumeBase64(msg.resumeType || 'it-mgmt');
+      const defaultType = jobTypes[0]?.key || 'it-mgmt';
+      const resumeFile = await getResumeBase64(msg.resumeType || defaultType);
 
-      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, credentials, workExperience, hasClaudeKey: claudeReady });
+      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, credentials, workExperience, jobTypes, hasClaudeKey: claudeReady });
     })();
     return true;
   }
@@ -629,11 +670,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 // ─── Extension install / update ─────────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(['jobs', 'resumeNames', 'qaAnswers'], r => {
+  chrome.storage.local.get(['jobs', 'resumeNames', 'qaAnswers', 'jobTypes'], r => {
     const updates = {};
     if (!r.jobs)        updates.jobs        = [];
     if (!r.resumeNames) updates.resumeNames = DEFAULT_RESUMES;
     if (!r.qaAnswers)   updates.qaAnswers   = DEFAULT_QA;
+    if (!r.jobTypes)    updates.jobTypes    = DEFAULT_JOB_TYPES;
     if (Object.keys(updates).length) chrome.storage.local.set(updates);
   });
 });

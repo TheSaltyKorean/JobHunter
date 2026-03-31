@@ -9,12 +9,15 @@ const STATUS_META = {
   rejected:  { label: 'Rejected',  color: '#ef4444', icon: '✖' },
 };
 
-const TYPE_META = {
+// Dynamic — loaded from storage, with hardcoded fallback
+let TYPE_META = {
   cloud:     { label: 'Cloud / Infra', icon: '☁️',  color: '#0ea5e9' },
   'it-mgmt': { label: 'IT Mgmt',       icon: '💼',  color: '#6366f1' },
   executive: { label: 'Executive',     icon: '🏆',  color: '#f59e0b' },
   staffing:  { label: 'Staffing',      icon: '🏢',  color: '#94a3b8' },
 };
+
+const TYPE_COLORS = ['#0ea5e9', '#6366f1', '#f59e0b', '#94a3b8', '#10b981', '#ef4444'];
 
 const DEFAULT_RESUMES = {
   cloud:     'Cloud & Infrastructure Resume',
@@ -22,6 +25,18 @@ const DEFAULT_RESUMES = {
   executive: 'Executive Resume',
   staffing:  'Staffing Agency Resume',
 };
+
+// Load dynamic job types into TYPE_META
+function loadDynamicTypes() {
+  chrome.storage.local.get(['jobTypes'], r => {
+    if (r.jobTypes && r.jobTypes.length) {
+      TYPE_META = {};
+      r.jobTypes.forEach((jt, i) => {
+        TYPE_META[jt.key] = { label: jt.label, icon: jt.emoji, color: TYPE_COLORS[i % TYPE_COLORS.length] };
+      });
+    }
+  });
+}
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let allJobs      = [];
@@ -255,6 +270,7 @@ function closeModal() {
 
 // ── Event wiring ──────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  loadDynamicTypes();
   loadAll();
 
   // Search
