@@ -455,11 +455,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const credentials  = await new Promise(resolve => {
         chrome.storage.local.get(['atsCredentials'], r => resolve(r.atsCredentials || {}));
       });
+      const workExperience = await new Promise(resolve => {
+        chrome.storage.local.get(['workExperience'], r => resolve(r.workExperience || []));
+      });
 
       // Get resume as base64 for the content script
       const resumeFile = await getResumeBase64(msg.resumeType || 'it-mgmt');
 
-      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, credentials, hasClaudeKey: claudeReady });
+      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, credentials, workExperience, hasClaudeKey: claudeReady });
     })();
     return true;
   }

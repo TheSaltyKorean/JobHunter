@@ -172,6 +172,126 @@ document.getElementById('save-custom-qa').addEventListener('click', () => {
   });
 });
 
+// ── Work Experience management ──────────────────────────────────────────
+function loadExperience() {
+  chrome.storage.local.get(['workExperience'], r => {
+    const list = document.getElementById('exp-list');
+    list.innerHTML = '';
+    const entries = r.workExperience || [];
+    entries.forEach((exp, i) => addExpEntry(exp, i));
+  });
+}
+
+function addExpEntry(exp = {}, index) {
+  const list = document.getElementById('exp-list');
+  const num = index !== undefined ? index + 1 : list.children.length + 1;
+  const entry = document.createElement('div');
+  entry.className = 'exp-entry';
+
+  const months = '<option value="">--</option>' +
+    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      .map((m, i) => `<option value="${i + 1}" ${exp.startMonth == (i+1) ? 'selected' : ''}>${m}</option>`)
+      .join('');
+  const endMonths = '<option value="">--</option>' +
+    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      .map((m, i) => `<option value="${i + 1}" ${exp.endMonth == (i+1) ? 'selected' : ''}>${m}</option>`)
+      .join('');
+
+  entry.innerHTML = `
+    <div class="exp-header">
+      <div class="exp-number">${num}</div>
+      ${exp.current ? '<span class="exp-current-badge">Current</span>' : ''}
+    </div>
+    <button class="exp-remove" title="Remove">✕</button>
+    <div class="exp-grid">
+      <div class="field">
+        <label class="field-label">Job Title</label>
+        <input class="field-input exp-title" type="text" value="${escapeHtml(exp.title || '')}" placeholder="e.g. VP of IT Infrastructure">
+      </div>
+      <div class="field">
+        <label class="field-label">Company</label>
+        <input class="field-input exp-company" type="text" value="${escapeHtml(exp.company || '')}" placeholder="e.g. Acme Corp">
+      </div>
+      <div class="field full">
+        <label class="field-label">Location</label>
+        <input class="field-input exp-location" type="text" value="${escapeHtml(exp.location || '')}" placeholder="e.g. Fort Lauderdale, FL">
+      </div>
+      <div class="field full">
+        <label class="field-label">Start / End Date</label>
+        <div class="exp-date-row">
+          <div class="field">
+            <select class="field-select exp-start-month">${months}</select>
+          </div>
+          <div class="field">
+            <input class="field-input exp-start-year" type="text" value="${escapeHtml(exp.startYear || '')}" placeholder="Year" style="width:70px">
+          </div>
+          <span style="color:var(--text3);padding-bottom:8px;">→</span>
+          <div class="field">
+            <select class="field-select exp-end-month" ${exp.current ? 'disabled' : ''}>${endMonths}</select>
+          </div>
+          <div class="field">
+            <input class="field-input exp-end-year" type="text" value="${escapeHtml(exp.endYear || '')}" placeholder="Year" style="width:70px" ${exp.current ? 'disabled' : ''}>
+          </div>
+          <label class="exp-current-check">
+            <input type="checkbox" class="exp-current" ${exp.current ? 'checked' : ''}> Current
+          </label>
+        </div>
+      </div>
+      <div class="field full">
+        <label class="field-label">Description / Responsibilities</label>
+        <textarea class="field-textarea exp-desc" placeholder="Brief summary of role...">${escapeHtml(exp.description || '')}</textarea>
+      </div>
+    </div>
+  `;
+
+  entry.querySelector('.exp-remove').addEventListener('click', () => entry.remove());
+  entry.querySelector('.exp-current').addEventListener('change', (e) => {
+    const endMonth = entry.querySelector('.exp-end-month');
+    const endYear = entry.querySelector('.exp-end-year');
+    if (e.target.checked) {
+      endMonth.disabled = true; endMonth.value = '';
+      endYear.disabled = true; endYear.value = '';
+    } else {
+      endMonth.disabled = false;
+      endYear.disabled = false;
+    }
+  });
+
+  list.appendChild(entry);
+}
+
+function collectExperience() {
+  const entries = [];
+  document.querySelectorAll('.exp-entry').forEach(entry => {
+    const title      = entry.querySelector('.exp-title').value.trim();
+    const company    = entry.querySelector('.exp-company').value.trim();
+    const location   = entry.querySelector('.exp-location').value.trim();
+    const startMonth = entry.querySelector('.exp-start-month').value;
+    const startYear  = entry.querySelector('.exp-start-year').value.trim();
+    const endMonth   = entry.querySelector('.exp-end-month').value;
+    const endYear    = entry.querySelector('.exp-end-year').value.trim();
+    const current    = entry.querySelector('.exp-current').checked;
+    const description = entry.querySelector('.exp-desc').value.trim();
+    if (title || company) {
+      entries.push({ title, company, location, startMonth, startYear, endMonth, endYear, current, description });
+    }
+  });
+  return entries;
+}
+
+document.getElementById('add-exp').addEventListener('click', () => addExpEntry({}, document.querySelectorAll('.exp-entry').length));
+
+document.getElementById('save-exp').addEventListener('click', () => {
+  const exp = collectExperience();
+  chrome.storage.local.set({ workExperience: exp }, () => {
+    if (chrome.runtime.lastError) {
+      alert('Save failed: ' + chrome.runtime.lastError.message);
+    } else {
+      showSaved('exp-saved');
+    }
+  });
+});
+
 // ── ATS Login Credentials ───────────────────────────────────────────────
 function loadCredentials() {
   chrome.storage.local.get(['atsCredentials', 'profile'], r => {
@@ -319,5 +439,6 @@ if (dashLink) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadSettings();
 loadCredentials();
+loadExperience();
 loadCustomQA();
 loadClaudeConfig();

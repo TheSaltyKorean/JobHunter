@@ -563,7 +563,14 @@
   }
 
   // ── Resume upload ─────────────────────────────────────────────────────────
+  let _resumeAlreadyUploaded = false; // Track across multiple Auto-Fill clicks
+
   async function uploadResume(resumeFile, log) {
+    if (_resumeAlreadyUploaded) {
+      logFill(log, '✓ Resume already uploaded (skipping)', 'success');
+      return true;
+    }
+
     if (!resumeFile || !resumeFile.data) {
       logFill(log, '⚠ No resume file linked for this type', 'warn');
       return false;
@@ -573,6 +580,15 @@
     if (fileInputs.length === 0) {
       logFill(log, '⚠ No file upload field found on page', 'warn');
       return false;
+    }
+
+    // Check if a file is already attached
+    for (const input of fileInputs) {
+      if (input.files && input.files.length > 0) {
+        logFill(log, `✓ Resume already attached: ${input.files[0].name} (skipping)`, 'success');
+        _resumeAlreadyUploaded = true;
+        return true;
+      }
     }
 
     // Convert base64 to File object
@@ -596,6 +612,7 @@
       input.dispatchEvent(new Event('change', { bubbles: true }));
       input.dispatchEvent(new Event('input', { bubbles: true }));
       logFill(log, `✓ Resume uploaded: ${resumeFile.name}`, 'success');
+      _resumeAlreadyUploaded = true;
       return true;
     }
 
@@ -642,6 +659,120 @@
   }
 
   // ── Main auto-fill ────────────────────────────────────────────────────────
+  // ── Fill work experience sections ──────────────────────────────────────────
+  // Many ATS forms have repeating "Work Experience" blocks with fields for
+  // title, company, start/end date, description, etc.
+  function fillExperience(workExperience, log) {
+    if (!workExperience || workExperience.length === 0) return 0;
+
+    // Month number → name mapping
+    const MONTH_NAMES = ['','January','February','March','April','May','June',
+      'July','August','September','October','November','December'];
+
+    let filled = 0;
+
+    // Strategy: look for groups of fields that form an experience entry.
+    // We match them by looking for "Job Title" / "Company" / "Start Date" patterns
+    // within the same container (fieldset, div, section).
+    const allFields = scanFormFields();
+
+    // Group fields by their closest container (fieldset, form-group, section)
+    function getContainer(el) {
+      let node = el.parentElement;
+      for (let i = 0; i < 8 && node; i++) {
+        const tag = node.tagName?.toLowerCase();
+        const cls = (node.className || '').toLowerCase();
+        if (tag === 'fieldset' || tag === 'section' ||
+            cls.includes('experience') || cls.includes('work-history') ||
+            cls.includes('employment') || cls.includes('form-group') ||
+            cls.includes('repeatable') || cls.includes('entry')) {
+          return node;
+        }
+        node = node.parentElement;
+      }
+      return null;
+    }
+
+    // Find experience-related fields
+    const expFieldPatterns = {
+      title:       /job.*title|position.*title|role|title/i,
+      company:     /company|employer|organization|firm/i,
+      location:    /location|city/i,
+      startMonth:  /start.*month|from.*month/i,
+      startYear:   /start.*year|from.*year/i,
+      startDate:   /start.*date|from.*date|begin.*date/i,
+      endMonth:    /end.*month|to.*month/i,
+      endYear:     /end.*year|to.*year/i,
+      endDate:     /end.*date|to.*date/i,
+      current:     /current|present|still.*work|currently.*work/i,
+      description: /responsibilit|description|duties|summary|accomplishment/i,
+    };
+
+    // Try to fill individual experience fields that we can identify
+    let expIndex = 0; // which experience entry we're filling
+    const usedFields = new Set();
+
+    for (const field of allFields) {
+      if (field.filled) continue;
+      if (usedFields.has(field.element)) continue;
+      const label = field.label.toLowerCase();
+      if (!label) continue;
+
+      const exp = workExperience[expIndex];
+      if (!exp) break;
+
+      // Match field to experience data
+      for (const [key, rx] of Object.entries(expFieldPatterns)) {
+        if (!rx.test(label)) continue;
+
+        let value = '';
+        switch (key) {
+          case 'title':       value = exp.title || ''; break;
+          case 'company':     value = exp.company || ''; break;
+          case 'location':    value = exp.location || ''; break;
+          case 'startMonth':  value = exp.startMonth ? MONTH_NAMES[parseInt(exp.startMonth)] : ''; break;
+          case 'startYear':   value = exp.startYear || ''; break;
+          case 'startDate':
+            if (exp.startMonth && exp.startYear) {
+              // Try MM/YYYY or MM/DD/YYYY format
+              const mm = String(exp.startMonth).padStart(2, '0');
+              value = `${mm}/01/${exp.startYear}`;
+            }
+            break;
+          case 'endMonth':
+            if (exp.current) { value = ''; }
+            else { value = exp.endMonth ? MONTH_NAMES[parseInt(exp.endMonth)] : ''; }
+            break;
+          case 'endYear':
+            value = exp.current ? '' : (exp.endYear || '');
+            break;
+          case 'endDate':
+            if (exp.current) { value = ''; }
+            else if (exp.endMonth && exp.endYear) {
+              const mm = String(exp.endMonth).padStart(2, '0');
+              value = `${mm}/01/${exp.endYear}`;
+            }
+            break;
+          case 'current':
+            value = exp.current ? 'Yes' : 'No';
+            break;
+          case 'description':
+            value = exp.description || '';
+            break;
+        }
+
+        if (value && fillField(field, value)) {
+          logFill(log, `✓ Experience: ${label.substring(0, 40)} → ${value.substring(0, 30)}`, 'success');
+          usedFields.add(field.element);
+          filled++;
+          break;
+        }
+      }
+    }
+
+    return filled;
+  }
+
   async function runAutoFill(resumeType) {
     const section = document.getElementById('jh-fill-status-section');
     const log     = document.getElementById('jh-fill-log');
@@ -671,7 +802,15 @@
     logFill(log, 'Looking for resume upload field...', 'info');
     await uploadResume(data.resumeFile, log);
 
-    // 3. Scan all form fields
+    // 3. Fill work experience sections
+    const workExp = data.workExperience || [];
+    if (workExp.length > 0) {
+      logFill(log, `Filling work experience (${workExp.length} entries)...`, 'info');
+      const expFilled = fillExperience(workExp, log);
+      if (expFilled > 0) logFill(log, `Filled ${expFilled} experience field(s)`, 'success');
+    }
+
+    // 4. Scan all form fields
     logFill(log, 'Scanning form fields...', 'info');
     const fields = scanFormFields();
     logFill(log, `Found ${fields.length} fillable fields`, 'info');

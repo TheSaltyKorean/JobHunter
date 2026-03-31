@@ -336,6 +336,80 @@
     }
     .custom-qa-remove:hover { background: rgba(239,68,68,0.2); }
 
+    /* ── Work Experience entries ── */
+    .exp-list { display: flex; flex-direction: column; gap: 14px; }
+    .exp-entry {
+      padding: 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      position: relative;
+    }
+    .exp-entry .exp-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .exp-entry .exp-number {
+      background: var(--purple);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .exp-entry .exp-current-badge {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: rgba(16,185,129,0.15);
+      color: var(--green);
+    }
+    .exp-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .exp-grid .full { grid-column: 1 / -1; }
+    .exp-date-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+    .exp-date-row .field { flex: 1; }
+    .exp-date-row .exp-current-check {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text2);
+      padding-bottom: 10px;
+      white-space: nowrap;
+    }
+    .exp-date-row .exp-current-check input { accent-color: var(--purple); }
+    .exp-remove {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(239,68,68,0.1);
+      color: var(--red);
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      width: 28px;
+      height: 28px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .exp-remove:hover { background: rgba(239,68,68,0.2); }
+
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -661,6 +735,24 @@
       <div class="card-footer">
         <span class="saved-msg" id="qa-saved">&#10003; Answers saved</span>
         <button class="btn btn-primary" id="save-qa">Save Answers</button>
+      </div>
+    </div>
+
+    <!-- Work Experience card -->
+    <div class="card">
+      <div class="card-title">Work Experience</div>
+      <div class="card-subtitle">
+        Add your work history (most recent first). Auto-Fill uses this to populate experience sections
+        on applications. If a form asks for the day, the 1st of the month is used automatically.
+      </div>
+
+      <div id="exp-list" class="exp-list"></div>
+
+      <button class="btn btn-ghost" id="add-exp" style="margin-top: 12px;">+ Add Position</button>
+
+      <div class="card-footer">
+        <span class="saved-msg" id="exp-saved">&#10003; Experience saved</span>
+        <button class="btn btn-primary" id="save-exp">Save Experience</button>
       </div>
     </div>
 
