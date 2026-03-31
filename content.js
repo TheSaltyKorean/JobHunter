@@ -21,9 +21,84 @@
 
   // ── Extract job info from the current page ─────────────────────────────────
 
+  // Shared: try to find a company name from common DOM patterns
+  function findCompanyInDOM() {
+    // 1. Specific selectors (class-based, data attributes, itemprop)
+    const selectors = [
+      '[itemprop="hiringOrganization"] [itemprop="name"]',
+      '[itemprop="hiringOrganization"]',
+      '[data-company]', '[data-company-name]', '[data-testid="company-name"]',
+      '[data-testid="inlineHeader-companyName"]',
+      '[class*="company-name"]', '[class*="CompanyName"]', '[class*="companyName"]',
+      '[class*="employer-name"]', '[class*="EmployerName"]',
+      '.company-name', '.employer-name',
+      '.jobs-unified-top-card__company-name',
+    ];
+    for (const s of selectors) {
+      try {
+        const el = document.querySelector(s);
+        const text = el?.innerText?.trim();
+        if (text && text.length < 80) return text;
+      } catch (_) {}
+    }
+
+    // 2. og:title sometimes has "Job Title at Company" or "Job Title - Company"
+    const ogTitle = document.querySelector('meta[property="og:title"]')?.content || '';
+    const atMatch = ogTitle.match(/\bat\s+(.+?)(?:\s*[-|]|$)/i);
+    if (atMatch && atMatch[1].trim().length > 1) return atMatch[1].trim();
+
+    // 3. LD+JSON
+    const ldJson = document.querySelector('script[type="application/ld+json"]');
+    if (ldJson) {
+      try {
+        const d = JSON.parse(ldJson.textContent);
+        const org = d.hiringOrganization || d.employer;
+        if (org?.name) return org.name;
+      } catch (_) {}
+    }
+
+    // 4. Page header area: look for logo-adjacent text in the top 200px
+    const headerEls = document.querySelectorAll('header a, nav a, [class*="logo"] + *, [class*="brand"]');
+    for (const el of headerEls) {
+      const text = el.innerText?.trim();
+      // Skip if it looks like a nav item
+      if (text && text.length > 2 && text.length < 50 && !/home|jobs|career|sign|log|menu/i.test(text)) {
+        return text;
+      }
+    }
+
+    // 5. og:site_name — only if it doesn't match a known platform
+    const ogSite = document.querySelector('meta[property="og:site_name"]')?.content || '';
+    const platformNames = ['indeed','glassdoor','ziprecruiter','dice','monster','greenhouse',
+      'lever','workday','linkedin','icims','taleo','smartrecruiters','jobvite'];
+    if (ogSite && !platformNames.some(p => ogSite.toLowerCase().includes(p))) {
+      return ogSite;
+    }
+
+    return '';
+  }
+
+  // Shared: find location from common patterns
+  function findLocationInDOM() {
+    const locSelectors = [
+      '[itemprop="jobLocation"] [itemprop="address"]',
+      '[itemprop="jobLocation"]',
+      '[class*="location"]', '[class*="Location"]',
+      '[data-testid="job-location"]',
+      '.jobs-unified-top-card__bullet',
+    ];
+    for (const s of locSelectors) {
+      try {
+        const el = document.querySelector(s);
+        const text = el?.innerText?.trim();
+        if (text && text.length < 100) return text;
+      } catch (_) {}
+    }
+    return '';
+  }
+
   // LinkedIn obfuscates all class names, so DOM selectors are unreliable.
-  // The most reliable source is document.title: "Job Title | Company | LinkedIn"
-  // and the URL pattern: /jobs/view/<id>/
+  // Most reliable source: document.title = "Job Title | Company | LinkedIn"
   function extractLinkedInJob() {
     const url = location.href;
     const titleParts = document.title.split('|').map(p => p.trim());
@@ -45,15 +120,14 @@
       company = '';
     }
 
-    // Location: walk text nodes looking for "City, ST" pattern near the job detail
+    // Location: walk text nodes looking for "City, ST" pattern
     let loc = '';
     const locWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    const cityStateRx = /^[A-Z][a-zA-Z\s]+,\s*[A-Z]{2}(?:\s*\(.*\))?$/;
+    const cityStateRx = /^[A-Z][a-zA-Z\s.]+,\s*[A-Z]{2}(?:\s*\(.*\))?$/;
     while (locWalker.nextNode()) {
       const t = locWalker.currentNode.textContent?.trim();
       if (t && cityStateRx.test(t) && t.length < 60) {
         const parent = locWalker.currentNode.parentElement;
-        // Make sure it's a small leaf element, not a big container
         if (parent && parent.children.length === 0) {
           loc = t;
           break;
@@ -64,66 +138,11 @@
     return { title, company, location: loc, platform: 'LinkedIn', url };
   }
 
-  function extractGenericJob() {
-    const url = location.href;
-
-    let title = '';
-    const ldJson = document.querySelector('script[type="application/ld+json"]');
-    if (ldJson) {
-      try {
-        const d = JSON.parse(ldJson.textContent);
-        title = d.title || d.name || '';
-      } catch (_) {}
-    }
-    if (!title) {
-      const h1 = document.querySelector('h1');
-      if (h1?.innerText?.trim()) title = h1.innerText.trim();
-    }
-    if (!title) title = document.title.split(/[-|–]/)[0].trim();
-
-    let company = '';
-    // Skip og:site_name for generic sites — it often returns the platform name
-    const companySelectors = [
-      '[data-company]','[class*="company-name"]','[class*="CompanyName"]',
-      '[class*="employer"]','[itemprop="hiringOrganization"]',
-      '.jobs-unified-top-card__company-name',
-      '[data-testid="inlineHeader-companyName"]',
-      '[data-testid="company-name"]',
-      '.company-name', '.employer-name',
-    ];
-    for (const s of companySelectors) {
-      const el = document.querySelector(s);
-      if (el?.innerText?.trim()) { company = el.innerText.trim(); break; }
-    }
-    // Fallback to og:site_name only if nothing else found
-    if (!company) {
-      const ogSite = document.querySelector('meta[property="og:site_name"]')?.content || '';
-      // Only use if it doesn't look like a platform name
-      const platformNames = ['indeed','glassdoor','ziprecruiter','dice','monster','greenhouse','lever','workday'];
-      if (ogSite && !platformNames.some(p => ogSite.toLowerCase().includes(p))) {
-        company = ogSite;
-      }
-    }
-
-    let loc = '';
-    const locSelectors = [
-      '[class*="location"]','[class*="Location"]',
-      '[data-testid="job-location"]',
-      '.jobs-unified-top-card__bullet',
-    ];
-    for (const s of locSelectors) {
-      const el = document.querySelector(s);
-      if (el?.innerText?.trim()) { loc = el.innerText.trim(); break; }
-    }
-
-    return { title, company, location: loc, url };
-  }
-
-  // Indeed-specific: document.title is "Job Title - Company - City, ST | Indeed.com"
+  // Indeed: document.title = "Job Title - Company - City, ST | Indeed.com"
   function extractIndeedJob() {
     const url = location.href;
     const raw = document.title.replace(/\s*\|\s*Indeed\.com\s*$/i, '').trim();
-    const parts = raw.split(/\s*-\s*/);
+    const parts = raw.split(/\s+-\s+/); // split on " - " (with spaces) to avoid splitting hyphenated titles
     let title = '', company = '', loc = '';
     if (parts.length >= 3) {
       title   = parts[0].trim();
@@ -135,30 +154,77 @@
     } else {
       title = raw;
     }
-    // Fall back to DOM if title looks empty
-    const generic = extractGenericJob();
+    const domCompany = findCompanyInDOM();
+    const domLoc     = findLocationInDOM();
     return {
-      title:    title || generic.title,
-      company:  company || generic.company,
-      location: loc || generic.location,
+      title:    title || document.querySelector('h1')?.innerText?.trim() || '',
+      company:  company || domCompany,
+      location: loc || domLoc,
       platform: 'Indeed',
       url,
     };
+  }
+
+  // Generic extractor for all other sites (careers pages, ATS, etc.)
+  function extractGenericJob() {
+    const url = location.href;
+
+    // Title: LD+JSON > h1 > document.title (split on | only, NOT -)
+    let title = '';
+    const ldJson = document.querySelector('script[type="application/ld+json"]');
+    if (ldJson) {
+      try {
+        const d = JSON.parse(ldJson.textContent);
+        title = d.title || d.name || '';
+      } catch (_) {}
+    }
+    if (!title) {
+      const h1 = document.querySelector('h1');
+      const h1Text = h1?.innerText?.trim();
+      // Skip generic headings like "Start Your Application", "Sign In", "Apply Now"
+      const genericH1 = ['start your application', 'sign in', 'apply now', 'apply', 'log in',
+        'create account', 'register', 'careers', 'jobs', 'search'];
+      if (h1Text && !genericH1.includes(h1Text.toLowerCase())) {
+        title = h1Text;
+      }
+    }
+    // If h1 was generic, check h2
+    if (!title) {
+      const h2s = document.querySelectorAll('h2');
+      for (const h2 of h2s) {
+        const text = h2.innerText?.trim();
+        if (text && text.length > 5 && text.length < 100 && !/premium|alert|similar|recommend/i.test(text)) {
+          title = text;
+          break;
+        }
+      }
+    }
+    // Last resort: document.title split on pipe only
+    if (!title) {
+      const parts = document.title.split('|').map(p => p.trim());
+      title = parts[0] || '';
+    }
+
+    const company = findCompanyInDOM();
+    const loc     = findLocationInDOM();
+
+    return { title, company, location: loc, url };
   }
 
   function extractJobInfo() {
     const hostname = location.hostname.replace(/^www\./, '');
 
     let platform = hostname;
-    if (hostname.includes('linkedin'))         platform = 'LinkedIn';
-    else if (hostname.includes('indeed'))      platform = 'Indeed';
-    else if (hostname.includes('greenhouse'))  platform = 'Greenhouse';
-    else if (hostname.includes('lever'))       platform = 'Lever';
-    else if (hostname.includes('workday'))     platform = 'Workday';
+    if (hostname.includes('linkedin'))           platform = 'LinkedIn';
+    else if (hostname.includes('indeed'))        platform = 'Indeed';
+    else if (hostname.includes('greenhouse'))    platform = 'Greenhouse';
+    else if (hostname.includes('lever'))         platform = 'Lever';
+    else if (hostname.includes('workday'))       platform = 'Workday';
     else if (hostname.includes('smartrecruiter')) platform = 'SmartRecruiters';
-    else if (hostname.includes('jobvite'))     platform = 'Jobvite';
-    else if (hostname.includes('icims'))       platform = 'iCIMS';
-    else if (hostname.includes('taleo'))       platform = 'Taleo';
+    else if (hostname.includes('jobvite'))       platform = 'Jobvite';
+    else if (hostname.includes('icims'))         platform = 'iCIMS';
+    else if (hostname.includes('taleo'))         platform = 'Taleo';
+    else if (hostname.includes('career'))        platform = hostname.split('.').slice(-2, -1)[0] + ' Careers';
 
     // Use site-specific extractors where the DOM is unreliable
     if (hostname.includes('linkedin')) return extractLinkedInJob();
@@ -630,6 +696,27 @@
     return intersection / (setA.size + setB.size - intersection);
   }
 
+  // ── Workday / ATS "Start Application" auto-click ──────────────────────────
+  // On Workday's "Start Your Application" page, auto-click "Apply Manually"
+  // to skip the splash screen and go straight to the form.
+  function tryAutoClickApply() {
+    const hostname = location.hostname;
+    if (!hostname.includes('workday') && !hostname.includes('myworkdayjobs')) return;
+
+    // Look for "Apply Manually" or "Apply" links/buttons on the start page
+    const applyTexts = ['apply manually', 'apply now', 'apply with resume'];
+    const buttons = document.querySelectorAll('a, button');
+    for (const btn of buttons) {
+      const text = btn.innerText?.trim()?.toLowerCase();
+      if (text && applyTexts.includes(text)) {
+        console.log('JobHunter: Found "' + btn.innerText.trim() + '" button, auto-clicking...');
+        setTimeout(() => btn.click(), 800);
+        return true;
+      }
+    }
+    return false;
+  }
+
   // ── Main init ──────────────────────────────────────────────────────────────
   let sidebarVisible = false;
 
@@ -794,6 +881,10 @@
         // On an ATS site (Workday, Greenhouse, etc.) — check for carried-over context
         console.log('JobHunter: ATS site detected, checking for job context');
         expandSidebar();
+
+        // Try auto-clicking through "Start Application" splash pages
+        tryAutoClickApply();
+
         chrome.runtime.sendMessage({ type: 'GET_JOB_CONTEXT' }, ctx => {
           if (ctx && ctx.title) {
             console.log('JobHunter: Found carried-over job context:', ctx.title);
