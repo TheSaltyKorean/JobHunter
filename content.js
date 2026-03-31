@@ -716,21 +716,22 @@
       location:    /location|city/i,
       startMonth:  /start.*month|from.*month/i,
       startYear:   /start.*year|from.*year/i,
-      startDate:   /start.*date|from.*date|begin.*date|^from\s*\*?$/i,
+      startDate:   /start.*date|from.*date|begin.*date|^from\b/i,
       endMonth:    /end.*month|to.*month/i,
       endYear:     /end.*year|to.*year/i,
-      endDate:     /end.*date|to.*date|^to\s*\*?$/i,
+      endDate:     /end.*date|to.*date|^to\b/i,
       current:     /current|present|still.*work|currently.*work|i currently work/i,
       description: /responsibilit|description|duties|summary|accomplishment|role.*description/i,
     };
+
+    // Track elements handled by fillExperience so the main loop skips them
+    const experienceHandledElements = new Set();
 
     // Fill one round of experience fields from the current DOM
     function fillOneEntry(exp) {
       const allFields = scanFormFields();
       const usedFields = new Set();
       let entryFilled = 0;
-      // Track whether we've seen a "from" so the next bare "to" maps correctly
-      let seenFrom = false;
 
       for (const field of allFields) {
         if (field.filled) continue;
@@ -740,6 +741,9 @@
 
         for (const [key, rx] of Object.entries(expFieldPatterns)) {
           if (!rx.test(label)) continue;
+
+          // Mark as handled by experience filler regardless of whether we can fill it
+          experienceHandledElements.add(field.element);
 
           let value = '';
           switch (key) {
@@ -754,7 +758,6 @@
             case 'startYear':   value = exp.startYear || ''; break;
             case 'startDate':
               value = buildDateValue(exp.startMonth, exp.startYear, field.element);
-              seenFrom = true;
               break;
             case 'endMonth':
               if (exp.current) { value = ''; }
@@ -783,8 +786,10 @@
             logFill(log, `✓ Experience: ${label.substring(0, 40)} → ${value.substring(0, 30)}`, 'success');
             usedFields.add(field.element);
             entryFilled++;
-            break;
+          } else if (!value) {
+            logFill(log, `⚠ Experience: ${label.substring(0, 40)} — no data to fill`, 'warn');
           }
+          break; // matched a pattern, move to next field
         }
       }
       return entryFilled;
@@ -871,10 +876,6 @@
     const fields = scanFormFields();
     logFill(log, `Found ${fields.length} fillable fields`, 'info');
 
-    // Labels that are handled by fillExperience — skip them in the main loop
-    // so they never get sent to Claude
-    const EXP_FIELD_SKIP = /^(from|to|job\s*title|company|employer|role\s*description|responsibilities|start|end|i currently work)\s*\*?$/i;
-
     // Track what we've already filled (by radio group name, etc.)
     const filledGroups = new Set();
     const unknownFields = [];
@@ -885,10 +886,17 @@
       if (field.filled) { skipped++; continue; }
       if (field.fieldType === 'radio' && filledGroups.has(field.element.name)) continue;
 
+      // Skip fields that were handled (or attempted) by fillExperience
+      if (experienceHandledElements.has(field.element)) { skipped++; continue; }
+
       const label = field.label;
 
-      // Skip fields that are handled by the experience filler
-      if (EXP_FIELD_SKIP.test(label.trim())) { skipped++; continue; }
+      // Also skip experience-like labels by text pattern (catches fields from
+      // entries we didn't have data for, or labels with error text appended)
+      const labelFirst = label.split('\n')[0].trim(); // strip error messages after newline
+      if (/^(from|to|job\s*title|company|employer|role\s*desc|responsibilities|i currently work)\b/i.test(labelFirst)) {
+        skipped++; continue;
+      }
 
       // A. Check custom Q&A first (user-defined exact/fuzzy matches)
       let matchedCustom = false;
