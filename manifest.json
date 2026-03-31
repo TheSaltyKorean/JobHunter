@@ -5,24 +5,68 @@
   "description": "Save jobs, auto-fill applications, and track every stage of your job search — across LinkedIn, Indeed, Workday, Greenhouse, Lever, and more.",
   "permissions": [
     "storage",
-    "unlimitedStorage",
     "tabs",
     "activeTab",
     "scripting",
     "notifications"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "https://www.linkedin.com/*",
+    "https://linkedin.com/*",
+    "https://www.indeed.com/*",
+    "https://indeed.com/*",
+    "https://*.myworkdayjobs.com/*",
+    "https://boards.greenhouse.io/*",
+    "https://*.greenhouse.io/*",
+    "https://jobs.lever.co/*",
+    "https://*.lever.co/*",
+    "https://www.glassdoor.com/*",
+    "https://app.smartrecruiters.com/*",
+    "https://jobs.smartrecruiters.com/*",
+    "https://*.ashbyhq.com/*",
+    "https://jobs.ashbyhq.com/*",
+    "https://*.icims.com/*",
+    "https://*.taleo.net/*",
+    "https://*.brassring.com/*",
+    "https://*.bamboohr.com/*",
+    "https://*.jobvite.com/*",
+    "https://*.recruitee.com/*",
+    "https://*.workable.com/*",
+    "https://*.hire.trakstar.com/*",
+    "https://careers.*.com/*",
+    "https://jobs.*.com/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "https://www.linkedin.com/jobs/*",
+        "https://linkedin.com/jobs/*",
+        "https://www.indeed.com/*",
+        "https://indeed.com/*",
+        "https://*.myworkdayjobs.com/*",
+        "https://boards.greenhouse.io/*",
+        "https://*.greenhouse.io/*",
+        "https://jobs.lever.co/*",
+        "https://*.lever.co/*",
+        "https://www.glassdoor.com/*",
+        "https://app.smartrecruiters.com/*",
+        "https://jobs.smartrecruiters.com/*",
+        "https://*.ashbyhq.com/*",
+        "https://jobs.ashbyhq.com/*",
+        "https://*.icims.com/*",
+        "https://*.taleo.net/*",
+        "https://*.bamboohr.com/*",
+        "https://*.jobvite.com/*",
+        "https://*.recruitee.com/*",
+        "https://*.workable.com/*"
+      ],
       "js": ["content.js"],
       "css": ["content.css"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   "action": {
@@ -51,7 +95,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["dashboard/dashboard.html", "resumes/*.pdf"],
+      "resources": ["dashboard/dashboard.html"],
       "matches": ["<all_urls>"]
     }
   ]

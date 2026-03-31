@@ -1743,8 +1743,14 @@
   // ── Main init ──────────────────────────────────────────────────────────────
   let sidebarVisible = false;
 
+  // Detect if we're in an ATS iframe (Greenhouse embed, etc.)
+  const isInIframe = window.self !== window.top;
+  const isATSFrame = /greenhouse\.io|lever\.co|myworkdayjobs\.com|icims\.com|taleo\.net|smartrecruiters\.com|ashbyhq\.com|bamboohr\.com|jobvite\.com|recruitee\.com|workable\.com|paylocity\.com/i.test(window.location.hostname);
+
   async function init() {
     if (document.getElementById('jh-sidebar')) return;
+    // In iframes, only run on ATS domains (e.g. Greenhouse embed inside company site)
+    if (isInIframe && !isATSFrame) return;
 
     // Load dynamic job types before building UI
     await loadJobTypes();
