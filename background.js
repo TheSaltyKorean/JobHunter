@@ -1,183 +1,158 @@
 // JobHunter — Background Service Worker
+// ─── Init ──────────────────────────────────────────────────────────────────
 
-// ─── Init ────────────────────────────────────────────────────────────────────
-chrome.runtime.onInstalled.addListener(async (details) => {
-  const data = await chrome.storage.local.get(['jobs', 'profile', 'settings']);
+const DEFAULT_RESUMES = {
+  cloud:     'Cloud & Infrastructure Resume',
+  'it-mgmt': 'IT Management Resume',
+  executive: 'Executive Resume',
+  staffing:  'Staffing Agency Resume',
+};
 
-  if (!data.jobs) await chrome.storage.local.set({ jobs: [] });
+// ─── Job Type Detection ─────────────────────────────────────────────────────
 
-  if (!data.profile) {
-    await chrome.storage.local.set({
-      profile: {
-        firstName: 'Randy',
-        lastName: 'Walker',
-        email: 'randy.walker@live.com',
-        phone: '',
-        address: '',
-        city: 'Austin',
-        state: 'TX',
-        zip: '',
-        country: 'United States',
-        linkedin: 'https://www.linkedin.com/in/randywalker',
-        github: '',
-        website: '',
-        currentTitle: 'IT Executive',
-        yearsExperience: '20',
-        salaryMin: '150000',
-        salaryExpectation: '180000',
-        workAuthorization: 'US Citizen',
-        requireSponsorship: 'No',
-        gender: '',
-        ethnicity: '',
-        veteran: 'No',
-        disability: 'No',
-        coverLetterDefault: ''
-      }
+const STAFFING_FIRMS = [
+  'infosys','wipro','tcs','tata consultancy','hcl','cognizant','tech mahindra',
+  'capgemini','syntel','hexaware','mphasis','ltimindtree','mindtree','niit',
+  'igate','mastech','persistent','virtusa','zensar','birlasoft','cyient',
+  'kforce','apex','collabera','diverse lynx','genesis10','softpath','incedo',
+  'trigent','datamatics','inforeliance','xorbit','geotemps','staffmark',
+  'pvh tech','tekskills','suncap','intellectt','technocraft',
+];
+
+const EXECUTIVE_KEYWORDS = [
+  'vp ','vice president','cto','cio','ciso','cxo','svp','evp',
+  'chief information','chief technology','chief digital','chief data',
+  'managing director','global head','head of it','head of technology',
+  'president of','group director','it director',
+];
+
+const CLOUD_KEYWORDS = [
+  'cloud','aws','azure','gcp','google cloud','infrastructure','devops',
+  'site reliability','sre','platform engineer','kubernetes','k8s','terraform',
+  'ansible','datacenter','data center','network engineer','systems engineer',
+  'cloud architect','solutions architect','cloud operations','cloudops',
+  'vmware','virtualization','devsecops','mlops','finops','cloud security',
+];
+
+function detectJobType(title, company) {
+  const t = (title  || '').toLowerCase();
+  const c = (company || '').toLowerCase();
+
+  // Staffing firms first — company name match
+  if (STAFFING_FIRMS.some(f => c.includes(f))) return 'staffing';
+
+  // Executive — title keywords
+  if (EXECUTIVE_KEYWORDS.some(k => t.includes(k))) return 'executive';
+
+  // Cloud / Infrastructure — title keywords
+  if (CLOUD_KEYWORDS.some(k => t.includes(k))) return 'cloud';
+
+  // Default: general IT management
+  return 'it-mgmt';
+}
+
+async function getResumeNames() {
+  return new Promise(resolve => {
+    chrome.storage.local.get(['resumeNames'], r => {
+      resolve({ ...DEFAULT_RESUMES, ...(r.resumeNames || {}) });
     });
-  }
-
-  if (!data.settings) {
-    await chrome.storage.local.set({
-      settings: {
-        autoDetect: true,
-        showBadge: true,
-        autofillEnabled: true,
-        highlightFilled: true
-      }
-    });
-  }
-
-  // Open options on first install
-  if (details.reason === 'install') {
-    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
-  }
-
-  updateBadge();
-});
-
-// ─── Messaging ───────────────────────────────────────────────────────────────
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  handleMessage(message, sender).then(sendResponse).catch(err => {
-    sendResponse({ success: false, error: err.message });
   });
-  return true; // async
+}
+
+// ─── Message Handler ────────────────────────────────────────────────────────
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+
+  // ── Save job ──────────────────────────────────────────────────────────────
+  if (msg.type === 'SAVE_JOB') {
+    chrome.storage.local.get(['jobs'], async r => {
+      const jobs = r.jobs || [];
+
+      // Avoid duplicates by URL
+      const url = msg.job.url || '';
+      if (url && jobs.some(j => j.url === url)) {
+        sendResponse({ ok: false, reason: 'duplicate' });
+        return;
+      }
+
+      const resumeNames = await getResumeNames();
+      const jobType     = msg.job.jobType || detectJobType(msg.job.title, msg.job.company);
+      const resumeUsed  = msg.job.resumeUsed || resumeNames[jobType] || resumeNames['it-mgmt'];
+
+      const job = {
+        id:          crypto.randomUUID(),
+        title:       msg.job.title    || '',
+        company:     msg.job.company  || '',
+        location:    msg.job.location || '',
+        platform:    msg.job.platform || '',
+        url:         url,
+        status:      msg.job.status   || 'saved',
+        jobType,
+        resumeUsed,
+        notes:       msg.job.notes    || '',
+        salary:      msg.job.salary   || '',
+        savedAt:     Date.now(),
+      };
+
+      jobs.push(job);
+      chrome.storage.local.set({ jobs }, () => {
+        sendResponse({ ok: true, job });
+      });
+    });
+    return true; // async
+  }
+
+  // ── Suggest resume for a job type ─────────────────────────────────────────
+  if (msg.type === 'SUGGEST_RESUME') {
+    (async () => {
+      const resumeNames = await getResumeNames();
+      const jobType     = msg.jobType || detectJobType(msg.title, msg.company);
+      sendResponse({ jobType, resumeName: resumeNames[jobType], resumeNames });
+    })();
+    return true;
+  }
+
+  // ── Get resume names ──────────────────────────────────────────────────────
+  if (msg.type === 'GET_RESUME_NAMES') {
+    (async () => { sendResponse(await getResumeNames()); })();
+    return true;
+  }
+
+  // ── Update job ────────────────────────────────────────────────────────────
+  if (msg.type === 'UPDATE_JOB') {
+    chrome.storage.local.get(['jobs'], r => {
+      const jobs = (r.jobs || []).map(j =>
+        j.id === msg.job.id ? { ...j, ...msg.job } : j
+      );
+      chrome.storage.local.set({ jobs }, () => sendResponse({ ok: true }));
+    });
+    return true;
+  }
+
+  // ── Delete job ────────────────────────────────────────────────────────────
+  if (msg.type === 'DELETE_JOB') {
+    chrome.storage.local.get(['jobs'], r => {
+      const jobs = (r.jobs || []).filter(j => j.id !== msg.id);
+      chrome.storage.local.set({ jobs }, () => sendResponse({ ok: true }));
+    });
+    return true;
+  }
+
+  // ── Get all jobs ──────────────────────────────────────────────────────────
+  if (msg.type === 'GET_JOBS') {
+    chrome.storage.local.get(['jobs'], r => {
+      sendResponse({ jobs: r.jobs || [] });
+    });
+    return true;
+  }
 });
 
-async function handleMessage(message, sender) {
-  switch (message.type) {
-    case 'GET_PROFILE': {
-      const { profile } = await chrome.storage.local.get('profile');
-      return { success: true, data: profile };
-    }
-    case 'SAVE_PROFILE': {
-      await chrome.storage.local.set({ profile: message.profile });
-      return { success: true };
-    }
-    case 'GET_JOBS': {
-      const { jobs } = await chrome.storage.local.get('jobs');
-      return { success: true, data: jobs || [] };
-    }
-    case 'SAVE_JOB': {
-      const result = await saveJob(message.job);
-      await updateBadge();
-      return { success: true, data: result };
-    }
-    case 'UPDATE_JOB': {
-      await updateJob(message.id, message.updates);
-      await updateBadge();
-      return { success: true };
-    }
-    case 'DELETE_JOB': {
-      await deleteJob(message.id);
-      await updateBadge();
-      return { success: true };
-    }
-    case 'GET_SETTINGS': {
-      const { settings } = await chrome.storage.local.get('settings');
-      return { success: true, data: settings };
-    }
-    case 'SAVE_SETTINGS': {
-      await chrome.storage.local.set({ settings: message.settings });
-      return { success: true };
-    }
-    case 'OPEN_DASHBOARD': {
-      chrome.tabs.create({ url: chrome.runtime.getURL('dashboard/dashboard.html') });
-      return { success: true };
-    }
-    case 'OPEN_OPTIONS': {
-      chrome.runtime.openOptionsPage();
-      return { success: true };
-    }
-    case 'GET_STATS': {
-      const { jobs: allJobs } = await chrome.storage.local.get('jobs');
-      return { success: true, data: computeStats(allJobs || []) };
-    }
-    default:
-      return { success: false, error: 'Unknown message type: ' + message.type };
-  }
-}
-
-// ─── Job CRUD ─────────────────────────────────────────────────────────────────
-async function saveJob(jobData) {
-  const { jobs = [] } = await chrome.storage.local.get('jobs');
-
-  // Deduplicate by URL
-  const existing = jobs.find(j => j.url && jobData.url && j.url === jobData.url);
-  if (existing) return existing;
-
-  const newJob = {
-    id: Date.now().toString(),
-    savedAt: new Date().toISOString(),
-    appliedAt: null,
-    status: 'saved',
-    notes: '',
-    salary: '',
-    ...jobData
-  };
-
-  jobs.unshift(newJob);
-  await chrome.storage.local.set({ jobs });
-  return newJob;
-}
-
-async function updateJob(id, updates) {
-  const { jobs = [] } = await chrome.storage.local.get('jobs');
-  const idx = jobs.findIndex(j => j.id === id);
-  if (idx !== -1) {
-    jobs[idx] = { ...jobs[idx], ...updates, updatedAt: new Date().toISOString() };
-    if (updates.status === 'applied' && !jobs[idx].appliedAt) {
-      jobs[idx].appliedAt = new Date().toISOString();
-    }
-    await chrome.storage.local.set({ jobs });
-  }
-}
-
-async function deleteJob(id) {
-  const { jobs = [] } = await chrome.storage.local.get('jobs');
-  await chrome.storage.local.set({ jobs: jobs.filter(j => j.id !== id) });
-}
-
-// ─── Badge ────────────────────────────────────────────────────────────────────
-async function updateBadge() {
-  const { jobs = [] } = await chrome.storage.local.get('jobs');
-  const interviews = jobs.filter(j => j.status === 'interview').length;
-  const offers = jobs.filter(j => j.status === 'offer').length;
-
-  if (offers > 0) {
-    chrome.action.setBadgeText({ text: offers.toString() });
-    chrome.action.setBadgeBackgroundColor({ color: '#10b981' });
-  } else if (interviews > 0) {
-    chrome.action.setBadgeText({ text: interviews.toString() });
-    chrome.action.setBadgeBackgroundColor({ color: '#f59e0b' });
-  } else {
-    chrome.action.setBadgeText({ text: '' });
-  }
-}
-
-// ─── Stats ────────────────────────────────────────────────────────────────────
-function computeStats(jobs) {
-  const counts = { saved: 0, applied: 0, interview: 0, offer: 0, rejected: 0 };
-  jobs.forEach(j => { if (counts[j.status] !== undefined) counts[j.status]++; });
-  const rate = counts.applied > 0 ? Math.round((counts.interview / counts.applied) * 100) : 0;
-  return { ...counts, total: jobs.length, interviewRate: rate };
-}
+// ─── Extension install / update ─────────────────────────────────────────────
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.get(['jobs', 'resumeNames'], r => {
+    const updates = {};
+    if (!r.jobs)        updates.jobs        = [];
+    if (!r.resumeNames) updates.resumeNames = DEFAULT_RESUMES;
+    if (Object.keys(updates).length) chrome.storage.local.set(updates);
+  });
+});
