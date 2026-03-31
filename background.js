@@ -29,7 +29,6 @@ const DEFAULT_QA = {
 };
 
 // ─── Fuzzy Matching — maps question text patterns to answer keys ───────────
-// Each rule: { patterns: [regex strings], key: qaKey, type: 'input'|'select'|'radio'|'textarea' }
 const FIELD_RULES = [
   // Name fields
   { patterns: ['first\\s*name', 'given\\s*name', 'nombre'],         key: '_firstName',     type: 'input' },
@@ -94,7 +93,6 @@ function matchQuestionToKey(questionText) {
   for (const rule of COMPILED_RULES) {
     for (const rx of rule.regexes) {
       if (rx.test(text)) {
-        // Prefer more specific (longer) pattern matches
         const score = rx.source.length;
         if (score > bestScore) {
           bestScore = score;
@@ -106,10 +104,10 @@ function matchQuestionToKey(questionText) {
   return bestMatch;
 }
 
-// ─── Claude API for unknown questions ──────────────────────────────────────
-async function getClaudeApiKey() {
+// ─── Claude CLI companion server (runs on localhost:3847) ──────────────────
+async function getClaudeServerPort() {
   return new Promise(resolve => {
-    chrome.storage.local.get(['claudeApiKey'], r => resolve(r.claudeApiKey || ''));
+    chrome.storage.local.get(['claudeServerPort'], r => resolve(r.claudeServerPort || 3847));
   });
 }
 
@@ -120,8 +118,7 @@ async function getCustomQA() {
 }
 
 async function askClaude(question, profile, qa) {
-  const apiKey = await getClaudeApiKey();
-  if (!apiKey) return null;
+  const port = await getClaudeServerPort();
 
   const profileSummary = Object.entries(profile)
     .filter(([_, v]) => v)
@@ -133,32 +130,34 @@ async function askClaude(question, profile, qa) {
     .join('\n');
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await fetch(`http://localhost:${port}/ask`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5-20250514',
-        max_tokens: 300,
-        system: `You are helping fill out a job application. Given the applicant's profile and a question from the application form, provide ONLY the answer text — no explanation, no quotes, no extra formatting. If it's a yes/no or multiple choice question, respond with just the matching option. If you truly cannot determine an answer, respond with exactly: SKIP`,
-        messages: [{
-          role: 'user',
-          content: `Applicant profile:\n${profileSummary}\n\nKnown Q&A:\n${qaSummary}\n\nApplication question: "${question}"\n\nProvide the best answer:`,
-        }],
+        question,
+        profile: profileSummary,
+        qa: qaSummary,
       }),
     });
     if (!resp.ok) return null;
     const data = await resp.json();
-    const answer = data?.content?.[0]?.text?.trim();
+    const answer = data?.answer?.trim();
     if (!answer || answer === 'SKIP') return null;
     return answer;
   } catch (e) {
-    console.error('JobHunter Claude API error:', e);
+    // Server not running — that's fine, just skip
+    console.log('JobHunter: Claude CLI server not reachable at localhost:' + port);
     return null;
+  }
+}
+
+async function isClaudeServerRunning() {
+  const port = await getClaudeServerPort();
+  try {
+    const resp = await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(2000) });
+    return resp.ok;
+  } catch (e) {
+    return false;
   }
 }
 
@@ -220,33 +219,48 @@ async function getQAAnswers() {
   });
 }
 
-// Resume files are stored as actual PDFs in the resumes/ folder
+// ─── Resume file access ──────────────────────────────────────────────────
+// Resume PDFs live in resumes/ folder inside the extension directory.
 // Filenames: cloud.pdf, it-mgmt.pdf, executive.pdf, staffing.pdf
-async function getResumeFile(type) {
+
+async function getResumeFileInfo(type) {
   const url = chrome.runtime.getURL(`resumes/${type}.pdf`);
   try {
-    const resp = await fetch(url);
-    if (!resp.ok) return null;
+    const resp = await fetch(url, { cache: 'no-store' });
+    if (!resp.ok) {
+      console.warn(`JobHunter: resumes/${type}.pdf fetch returned ${resp.status}`);
+      return null;
+    }
     const blob = await resp.blob();
-    if (blob.size === 0) return null;
-    return {
-      name: `${type}.pdf`,
-      size: blob.size,
-      url:  url,
-      mimeType: 'application/pdf',
-    };
+    // Check it's actually a PDF and not an error page
+    if (blob.size < 100 || blob.type === 'text/html') {
+      console.warn(`JobHunter: resumes/${type}.pdf seems invalid (size=${blob.size}, type=${blob.type})`);
+      return null;
+    }
+    return { name: `${type}.pdf`, size: blob.size, url };
   } catch (e) {
+    console.warn(`JobHunter: resumes/${type}.pdf fetch error:`, e.message);
     return null;
   }
 }
 
-// Also provide the raw blob for auto-fill upload
-async function getResumeBlob(type) {
+async function getResumeBase64(type) {
   const url = chrome.runtime.getURL(`resumes/${type}.pdf`);
   try {
-    const resp = await fetch(url);
+    const resp = await fetch(url, { cache: 'no-store' });
     if (!resp.ok) return null;
-    return await resp.blob();
+    const blob = await resp.blob();
+    if (blob.size < 100 || blob.type === 'text/html') return null;
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve({
+        data: reader.result.split(',')[1],
+        name: `${type}.pdf`,
+        size: blob.size,
+      });
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
   } catch (e) {
     return null;
   }
@@ -309,26 +323,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // ── Get resume file info ───────────────────────────────────────────────────
+  // ── Get resume file info ──────────────────────────────────────────────────
   if (msg.type === 'GET_RESUME_FILE') {
     (async () => {
-      const file = await getResumeFile(msg.resumeType);
+      const file = await getResumeFileInfo(msg.resumeType);
       sendResponse(file);
-    })();
-    return true;
-  }
-
-  // ── Get resume blob as base64 (for content script to create File object) ──
-  if (msg.type === 'GET_RESUME_BLOB') {
-    (async () => {
-      const blob = await getResumeBlob(msg.resumeType);
-      if (!blob) { sendResponse(null); return; }
-      const reader = new FileReader();
-      reader.onload = () => {
-        const base64 = reader.result.split(',')[1];
-        sendResponse({ data: base64, name: `${msg.resumeType}.pdf`, size: blob.size });
-      };
-      reader.readAsDataURL(blob);
     })();
     return true;
   }
@@ -338,11 +337,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     (async () => {
       const info = {};
       for (const type of ['cloud', 'it-mgmt', 'executive', 'staffing']) {
-        const file = await getResumeFile(type);
+        const file = await getResumeFileInfo(type);
         if (file) {
           info[type] = { name: file.name, size: file.size };
         }
       }
+      console.log('JobHunter: Resume files info:', JSON.stringify(info));
       sendResponse(info);
     })();
     return true;
@@ -363,38 +363,30 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // ── Save Q&A answers ──────────────────────────────────────────────────────
   if (msg.type === 'SAVE_QA_ANSWERS') {
     chrome.storage.local.set({ qaAnswers: msg.answers }, () => {
-      sendResponse({ ok: true });
+      if (chrome.runtime.lastError) {
+        console.error('JobHunter: QA save error:', chrome.runtime.lastError.message);
+        sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+      } else {
+        console.log('JobHunter: QA saved successfully', msg.answers);
+        sendResponse({ ok: true });
+      }
     });
     return true;
   }
 
-  // ── Get auto-fill data bundle (profile + Q&A + resume blob) ───────────────
+  // ── Get auto-fill data bundle (profile + Q&A + resume) ───────────────────
   if (msg.type === 'GET_AUTOFILL_DATA') {
     (async () => {
       const profile      = await getProfile();
       const qa           = await getQAAnswers();
       const resumeNames  = await getResumeNames();
       const customQA     = await getCustomQA();
-      const claudeApiKey = await getClaudeApiKey();
+      const claudeReady  = await isClaudeServerRunning();
 
-      // Get resume as base64 blob for the content script to use
-      let resumeFile = null;
-      const blob = await getResumeBlob(msg.resumeType || 'it-mgmt');
-      if (blob) {
-        resumeFile = await new Promise(resolve => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            resolve({
-              data: reader.result.split(',')[1],
-              name: `${msg.resumeType || 'it-mgmt'}.pdf`,
-              size: blob.size,
-            });
-          };
-          reader.readAsDataURL(blob);
-        });
-      }
+      // Get resume as base64 for the content script
+      const resumeFile = await getResumeBase64(msg.resumeType || 'it-mgmt');
 
-      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, hasClaudeKey: !!claudeApiKey });
+      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, hasClaudeKey: claudeReady });
     })();
     return true;
   }
@@ -403,10 +395,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'MATCH_QUESTION') {
     const match = matchQuestionToKey(msg.question);
     sendResponse(match);
-    return false;
+    return true; // changed to true for consistency
   }
 
-  // ── Ask Claude API for an answer to an unknown question ──────────────────
+  // ── Ask Claude CLI for an answer to an unknown question ──────────────────
   if (msg.type === 'ASK_CLAUDE') {
     (async () => {
       const profile = await getProfile();
@@ -420,7 +412,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   // ── Save custom Q&A pairs ────────────────────────────────────────────────
   if (msg.type === 'SAVE_CUSTOM_QA') {
     chrome.storage.local.set({ customQA: msg.pairs }, () => {
-      sendResponse({ ok: true });
+      if (chrome.runtime.lastError) {
+        console.error('JobHunter: Custom QA save error:', chrome.runtime.lastError.message);
+        sendResponse({ ok: false });
+      } else {
+        console.log('JobHunter: Custom QA saved', msg.pairs);
+        sendResponse({ ok: true });
+      }
     });
     return true;
   }
@@ -431,17 +429,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // ── Save Claude API key ──────────────────────────────────────────────────
-  if (msg.type === 'SAVE_CLAUDE_API_KEY') {
-    chrome.storage.local.set({ claudeApiKey: msg.key }, () => {
+  // ── Save Claude server port ──────────────────────────────────────────────
+  if (msg.type === 'SAVE_CLAUDE_PORT') {
+    chrome.storage.local.set({ claudeServerPort: msg.port }, () => {
       sendResponse({ ok: true });
     });
     return true;
   }
 
-  // ── Get Claude API key ───────────────────────────────────────────────────
-  if (msg.type === 'GET_CLAUDE_API_KEY') {
-    (async () => { sendResponse({ key: await getClaudeApiKey() }); })();
+  // ── Check Claude server status ───────────────────────────────────────────
+  if (msg.type === 'CHECK_CLAUDE_SERVER') {
+    (async () => {
+      const running = await isClaudeServerRunning();
+      sendResponse({ running });
+    })();
     return true;
   }
 
@@ -492,6 +493,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     });
     return false;
   }
+
+  // If we don't recognize the message, return true to prevent port closure issues
+  return true;
 });
 
 // ─── Extension install / update ─────────────────────────────────────────────

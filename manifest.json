@@ -12,6 +12,8 @@
     "notifications"
   ],
   "host_permissions": [
+    "http://localhost/*",
+    "http://127.0.0.1/*",
     "https://www.linkedin.com/*",
     "https://linkedin.com/*",
     "https://www.indeed.com/*",

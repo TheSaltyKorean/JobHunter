@@ -8,6 +8,15 @@ const DEFAULT_RESUMES = {
   staffing:  'Staffing Agency Resume',
 };
 
+const DEFAULT_QA = {
+  yearsExperience: '', workAuthorization: 'Authorized to work in the US',
+  sponsorship: 'No', willingToRelocate: 'Yes', desiredSalary: '',
+  startDate: 'Immediately', veteranStatus: 'I am not a protected veteran',
+  disabilityStatus: 'I do not wish to answer', gender: 'I do not wish to answer',
+  ethnicity: 'I do not wish to answer', educationLevel: '', university: '',
+  graduationYear: '', linkedinUrl: '', githubUrl: '', websiteUrl: '',
+};
+
 const RESUME_TYPES = ['cloud', 'it-mgmt', 'executive', 'staffing'];
 
 const QA_FIELDS = [
@@ -22,7 +31,7 @@ function loadSettings() {
   chrome.storage.local.get(['profile', 'resumeNames', 'qaAnswers'], r => {
     const p  = r.profile || {};
     const rn = { ...DEFAULT_RESUMES, ...(r.resumeNames || {}) };
-    const qa = r.qaAnswers || {};
+    const qa = { ...DEFAULT_QA, ...(r.qaAnswers || {}) };
 
     // Profile fields
     document.getElementById('name').value     = p.name     || '';
@@ -39,15 +48,16 @@ function loadSettings() {
     document.getElementById('resume-executive').value = rn['executive'];
     document.getElementById('resume-staffing').value  = rn['staffing'];
 
-    // Q&A fields
+    // Q&A fields — use merged defaults so saved values always load
     for (const key of QA_FIELDS) {
       const el = document.getElementById(`qa-${key}`);
-      if (el && qa[key]) {
+      if (el && qa[key] !== undefined) {
         el.value = qa[key];
       }
     }
 
     updateAvatar(p.name || '');
+    console.log('JobHunter Options: loaded QA answers', qa);
   });
 
   // Load resume file status
@@ -63,26 +73,32 @@ function updateAvatar(name) {
     : (parts[0]?.[0] || '?').toUpperCase();
 }
 
-// ── Resume file detection (reads from resumes/ folder) ──────────────────────
-function loadResumeFiles() {
-  chrome.runtime.sendMessage({ type: 'GET_RESUME_FILES_INFO' }, info => {
-    if (!info) info = {};
-    for (const type of RESUME_TYPES) {
-      const nameEl   = document.getElementById(`file-name-${type}`);
-      const statusEl = document.getElementById(`file-status-${type}`);
-      if (info[type]) {
-        nameEl.textContent = `${type}.pdf (${formatSize(info[type].size)})`;
-        nameEl.classList.remove('no-file');
-        statusEl.textContent = 'Found';
-        statusEl.className = 'resume-file-status found';
-      } else {
-        nameEl.textContent = `${type}.pdf not found in resumes/ folder`;
-        nameEl.classList.add('no-file');
-        statusEl.textContent = 'Missing';
-        statusEl.className = 'resume-file-status missing';
+// ── Resume file detection (checks directly via fetch) ───────────────────────
+async function loadResumeFiles() {
+  for (const type of RESUME_TYPES) {
+    const nameEl   = document.getElementById(`file-name-${type}`);
+    const statusEl = document.getElementById(`file-status-${type}`);
+    try {
+      const url = chrome.runtime.getURL(`resumes/${type}.pdf`);
+      const resp = await fetch(url, { cache: 'no-store' });
+      if (resp.ok) {
+        const blob = await resp.blob();
+        if (blob.size > 100 && blob.type !== 'text/html') {
+          nameEl.textContent = `${type}.pdf (${formatSize(blob.size)})`;
+          nameEl.classList.remove('no-file');
+          statusEl.textContent = 'Found';
+          statusEl.className = 'resume-file-status found';
+          continue;
+        }
       }
+    } catch (e) {
+      console.warn(`JobHunter: Error checking ${type}.pdf:`, e);
     }
-  });
+    nameEl.textContent = `${type}.pdf — not found in resumes/ folder`;
+    nameEl.classList.add('no-file');
+    statusEl.textContent = 'Missing';
+    statusEl.className = 'resume-file-status missing';
+  }
 }
 
 function formatSize(bytes) {
@@ -93,10 +109,12 @@ function formatSize(bytes) {
 
 // ── Custom Q&A pair management ───────────────────────────────────────────
 function loadCustomQA() {
-  chrome.runtime.sendMessage({ type: 'GET_CUSTOM_QA' }, pairs => {
+  chrome.storage.local.get(['customQA'], r => {
     const list = document.getElementById('custom-qa-list');
     list.innerHTML = '';
-    (pairs || []).forEach(pair => addCustomQARow(pair.question, pair.answer));
+    const pairs = r.customQA || [];
+    console.log('JobHunter Options: loaded custom QA', pairs);
+    pairs.forEach(pair => addCustomQARow(pair.question, pair.answer));
   });
 }
 
@@ -136,30 +154,59 @@ function collectCustomQA() {
 
 document.getElementById('add-custom-qa').addEventListener('click', () => addCustomQARow());
 
+// Save custom Q&A — use chrome.storage.local DIRECTLY (no message passing)
 document.getElementById('save-custom-qa').addEventListener('click', () => {
   const pairs = collectCustomQA();
-  chrome.runtime.sendMessage({ type: 'SAVE_CUSTOM_QA', pairs }, resp => {
-    if (resp?.ok) showSaved('custom-qa-saved');
-  });
-});
-
-// ── Claude API key management ───────────────────────────────────────────
-function loadClaudeKey() {
-  chrome.runtime.sendMessage({ type: 'GET_CLAUDE_API_KEY' }, resp => {
-    if (resp?.key) {
-      document.getElementById('claude-api-key').value = resp.key;
+  chrome.storage.local.set({ customQA: pairs }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('Custom QA save error:', chrome.runtime.lastError);
+      alert('Save failed: ' + chrome.runtime.lastError.message);
+    } else {
+      console.log('JobHunter: Custom QA saved directly', pairs);
+      showSaved('custom-qa-saved');
     }
   });
+});
+
+// ── Claude CLI server config ────────────────────────────────────────────
+function loadClaudeConfig() {
+  chrome.storage.local.get(['claudeServerPort'], r => {
+    document.getElementById('claude-server-port').value = r.claudeServerPort || 3847;
+  });
+  checkClaudeServer();
 }
 
-document.getElementById('save-claude-key').addEventListener('click', () => {
-  const key = document.getElementById('claude-api-key').value.trim();
-  chrome.runtime.sendMessage({ type: 'SAVE_CLAUDE_API_KEY', key }, resp => {
-    if (resp?.ok) showSaved('claude-saved');
+async function checkClaudeServer() {
+  const statusEl = document.getElementById('claude-server-status');
+  const port = document.getElementById('claude-server-port').value || 3847;
+  statusEl.textContent = 'Checking...';
+  statusEl.className = 'claude-status checking';
+  try {
+    const resp = await fetch(`http://localhost:${port}/health`, { signal: AbortSignal.timeout(2000) });
+    if (resp.ok) {
+      statusEl.textContent = 'Connected';
+      statusEl.className = 'claude-status connected';
+    } else {
+      statusEl.textContent = 'Not running';
+      statusEl.className = 'claude-status disconnected';
+    }
+  } catch (e) {
+    statusEl.textContent = 'Not running';
+    statusEl.className = 'claude-status disconnected';
+  }
+}
+
+document.getElementById('save-claude-config').addEventListener('click', () => {
+  const port = parseInt(document.getElementById('claude-server-port').value) || 3847;
+  chrome.storage.local.set({ claudeServerPort: port }, () => {
+    showSaved('claude-saved');
+    checkClaudeServer();
   });
 });
 
-// ── Save handlers ─────────────────────────────────────────────────────────────
+document.getElementById('check-claude-server').addEventListener('click', checkClaudeServer);
+
+// ── Save handlers — all use chrome.storage.local DIRECTLY ────────────────────
 document.getElementById('save-profile').addEventListener('click', () => {
   const profile = {
     name:     document.getElementById('name').value.trim(),
@@ -171,8 +218,12 @@ document.getElementById('save-profile').addEventListener('click', () => {
     summary:  document.getElementById('summary').value.trim(),
   };
   chrome.storage.local.set({ profile }, () => {
-    showSaved('profile-saved');
-    updateAvatar(profile.name);
+    if (chrome.runtime.lastError) {
+      alert('Save failed: ' + chrome.runtime.lastError.message);
+    } else {
+      showSaved('profile-saved');
+      updateAvatar(profile.name);
+    }
   });
 });
 
@@ -183,17 +234,30 @@ document.getElementById('save-resumes').addEventListener('click', () => {
     executive: document.getElementById('resume-executive').value.trim() || DEFAULT_RESUMES.executive,
     staffing:  document.getElementById('resume-staffing').value.trim()  || DEFAULT_RESUMES.staffing,
   };
-  chrome.storage.local.set({ resumeNames }, () => showSaved('resumes-saved'));
+  chrome.storage.local.set({ resumeNames }, () => {
+    if (chrome.runtime.lastError) {
+      alert('Save failed: ' + chrome.runtime.lastError.message);
+    } else {
+      showSaved('resumes-saved');
+    }
+  });
 });
 
+// Save Q&A — use chrome.storage.local DIRECTLY (no message passing)
 document.getElementById('save-qa').addEventListener('click', () => {
   const answers = {};
   for (const key of QA_FIELDS) {
     const el = document.getElementById(`qa-${key}`);
     if (el) answers[key] = el.value.trim();
   }
-  chrome.runtime.sendMessage({ type: 'SAVE_QA_ANSWERS', answers }, resp => {
-    if (resp?.ok) showSaved('qa-saved');
+  chrome.storage.local.set({ qaAnswers: answers }, () => {
+    if (chrome.runtime.lastError) {
+      console.error('QA save error:', chrome.runtime.lastError);
+      alert('Save failed: ' + chrome.runtime.lastError.message);
+    } else {
+      console.log('JobHunter: QA saved directly', answers);
+      showSaved('qa-saved');
+    }
   });
 });
 
@@ -220,4 +284,4 @@ if (dashLink) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadSettings();
 loadCustomQA();
-loadClaudeKey();
+loadClaudeConfig();

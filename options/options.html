@@ -289,6 +289,26 @@
     }
     .btn-ghost:hover { background: rgba(255,255,255,0.1); }
 
+    /* ── Claude server status ── */
+    .claude-status {
+      font-size: 12px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 6px;
+    }
+    .claude-status.connected {
+      background: rgba(16,185,129,0.15);
+      color: var(--green);
+    }
+    .claude-status.disconnected {
+      background: rgba(239,68,68,0.1);
+      color: var(--red);
+    }
+    .claude-status.checking {
+      background: rgba(245,158,11,0.1);
+      color: var(--amber);
+    }
+
     /* ── Custom Q&A pairs ── */
     .custom-qa-list { display: flex; flex-direction: column; gap: 10px; }
     .custom-qa-row {
@@ -609,30 +629,41 @@
       </div>
     </div>
 
-    <!-- Claude API card -->
+    <!-- Claude CLI Server card -->
     <div class="card">
-      <div class="card-title">Claude AI Integration</div>
+      <div class="card-title">Claude CLI Integration</div>
       <div class="card-subtitle">
-        When Auto-Fill encounters a question it can't match, Claude AI will analyze the question and generate
-        an appropriate answer based on your profile. Requires an Anthropic API key.
+        When Auto-Fill encounters a question it can't match, Claude CLI will analyze the question and generate
+        an appropriate answer based on your profile. Requires the companion server to be running.
       </div>
 
       <div class="form-grid">
-        <div class="field full">
-          <label class="field-label">Anthropic API Key</label>
-          <input class="field-input" id="claude-api-key" type="password" placeholder="sk-ant-api03-...">
+        <div class="field">
+          <label class="field-label">Server Port</label>
+          <input class="field-input" id="claude-server-port" type="number" value="3847" placeholder="3847">
+        </div>
+        <div class="field">
+          <label class="field-label">Server Status</label>
+          <div style="display:flex;align-items:center;gap:10px;padding-top:4px;">
+            <span class="claude-status disconnected" id="claude-server-status">Not checked</span>
+            <button class="btn btn-ghost" id="check-claude-server" style="padding:5px 12px;font-size:11px;">Refresh</button>
+          </div>
         </div>
       </div>
 
       <div class="detection-hint" style="margin-top: 12px;">
-        <strong>How it works:</strong> During auto-fill, any form field that doesn't match a built-in rule
-        or custom Q&A pair is sent to Claude with your profile context. Claude generates a concise answer
-        to fill the field. Without an API key, unrecognized fields are simply skipped.
+        <strong>How to start:</strong> Run the companion server from your extension folder:<br>
+        <code style="display:block;margin-top:6px;padding:8px;background:var(--bg);border-radius:6px;font-size:12px;">
+          python claude_server.py
+        </code>
+        <br>
+        The server wraps your local <code>claude</code> CLI — no API key needed, uses your existing Claude subscription.
+        Without the server running, unrecognized fields are simply skipped.
       </div>
 
       <div class="card-footer">
-        <span class="saved-msg" id="claude-saved">&#10003; API key saved</span>
-        <button class="btn btn-primary" id="save-claude-key">Save API Key</button>
+        <span class="saved-msg" id="claude-saved">&#10003; Config saved</span>
+        <button class="btn btn-primary" id="save-claude-config">Save Config</button>
       </div>
     </div>
 
