@@ -63,10 +63,7 @@ ATS_PLATFORMS = {
         'url_patterns': ['linkedin.com'],
         'name': 'LinkedIn',
     },
-    'indeed': {
-        'url_patterns': ['indeed.com'],
-        'name': 'Indeed',
-    },
+    # Indeed removed — Cloudflare blocks automation; apply opens in real browser
 }
 
 

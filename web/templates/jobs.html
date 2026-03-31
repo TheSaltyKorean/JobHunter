@@ -147,7 +147,11 @@
 function applyNow(id) {
   fetch(`/jobs/${id}/apply`, {method: 'POST'})
     .then(r => r.json())
-    .then(d => { showToast(d.message || d.error, d.error ? 'error' : 'success'); setTimeout(() => location.reload(), 2000); });
+    .then(d => {
+      showToast(d.message || d.error, d.error ? 'error' : 'success');
+      // Reload sooner for manual (Indeed) since there's nothing to wait for
+      setTimeout(() => location.reload(), d.manual ? 500 : 2000);
+    });
 }
 
 function dismiss(id) {

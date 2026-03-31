@@ -149,24 +149,21 @@ async def search_linkedin(keywords: list, location: str,
                     await page.goto(url, wait_until='domcontentloaded', timeout=30000)
                 except Exception as nav_err:
                     err_str = str(nav_err)
-                    if 'ERR_TOO_MANY_REDIRECTS' in err_str:
-                        logger.error(
-                            "LinkedIn session cookie is expired or invalid (redirect loop). "
-                            "Update your li_at cookie in Settings."
-                        )
-                        from . import notifier
-                        notifier.notify_config_warning(
-                            "LinkedIn Cookie Expired",
-                            "Your LinkedIn session cookie is invalid. Update it in Settings."
-                        )
-                        return None
-                    if 'ERR_HTTP_RESPONSE_CODE_FAILURE' in err_str:
+                    if 'ERR_TOO_MANY_REDIRECTS' in err_str or 'ERR_HTTP_RESPONSE_CODE_FAILURE' in err_str:
+                        # Rate-limited or cookie issue — stop trying more keywords
+                        # but keep whatever jobs we already found
                         logger.warning(
-                            f"LinkedIn returned HTTP error for '{keyword}' (likely rate-limited). "
-                            f"Skipping this keyword and waiting before next."
+                            f"LinkedIn blocked '{keyword}' ({err_str[:60]}...). "
+                            f"Stopping search — keeping {len(all_jobs)} jobs found so far."
                         )
-                        await asyncio.sleep(random.uniform(5, 10))
-                        continue
+                        if not all_jobs:
+                            # First keyword failed — likely a cookie issue
+                            from . import notifier
+                            notifier.notify_config_warning(
+                                "LinkedIn Cookie Expired",
+                                "Your LinkedIn session cookie may be invalid. Update it in Settings."
+                            )
+                        break  # Stop searching but return what we have
                     raise
 
                 await asyncio.sleep(random.uniform(3, 5))
@@ -176,15 +173,17 @@ async def search_linkedin(keywords: list, location: str,
                 if not auth_checked:
                     if 'authwall' in current_url or 'login' in current_url or 'checkpoint' in current_url:
                         logger.warning("LinkedIn requires login. Waiting up to 90s for manual login...")
+                        logged_in = False
                         for i in range(90):
                             await asyncio.sleep(1)
                             if 'linkedin.com/jobs' in page.url:
                                 logger.info("Login detected, continuing search")
                                 await asyncio.sleep(2)
+                                logged_in = True
                                 break
-                            if i == 89:
-                                logger.error("Login timeout - no login detected after 90s")
-                                return None
+                        if not logged_in:
+                            logger.error("Login timeout - no login detected after 90s")
+                            break  # Return whatever we have (likely empty)
                     auth_checked = True
 
                 logger.info(f"Landed on: {page.url}")
@@ -403,16 +402,17 @@ async def fetch_linkedin_description(url: str, li_session_cookie: str = None) ->
 
 
 # ─────────────────────────────────────────────────────────
-# INDEED SEARCHER
+# INDEED SEARCHER (HTTP-based, no Playwright — Cloudflare blocks it)
 # ─────────────────────────────────────────────────────────
 
 async def search_indeed(keywords: list, location: str, max_results: int = 25) -> list:
-    """Search Indeed for management roles."""
-    try:
-        from playwright.async_api import async_playwright
-    except ImportError:
-        logger.error("Playwright not installed.")
-        return []
+    """
+    Search Indeed using HTTP requests (not Playwright).
+    Cloudflare blocks automated browsers on Indeed, so we use requests
+    with a real User-Agent to fetch the public search results page.
+    """
+    import requests
+    from html.parser import HTMLParser
 
     jobs = []
     query = ' '.join(keywords)
@@ -421,197 +421,150 @@ async def search_indeed(keywords: list, location: str, max_results: int = 25) ->
         f"https://www.indeed.com/jobs"
         f"?q={query.replace(' ', '+')}"
         f"&l={location.replace(' ', '+').replace(',', '%2C')}"
-        f"&fromage=7"         # Posted in last 7 days
+        f"&fromage=7"
         f"&sort=date"
-        f"&sc=0kf%3Ajt%28fulltime%29%3B"  # Full-time
+        f"&sc=0kf%3Ajt%28fulltime%29%3B"
     )
 
-    async with async_playwright() as p:
-        browser, context = await _get_browser(p, headless=False)
-        page = await context.new_page()
+    headers = {
+        'User-Agent': (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/123.0.0.0 Safari/537.36'
+        ),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+    }
 
-        try:
-            logger.info(f"Searching Indeed: {query} in {location}")
-            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
-            await asyncio.sleep(random.uniform(2, 4))
+    try:
+        logger.info(f"Searching Indeed (HTTP): {query} in {location}")
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        html = resp.text
 
-            # Handle cookie/consent dialogs
-            try:
-                accept_btn = await page.query_selector('[id*="accept"], button[data-tn-component="accept"]')
-                if accept_btn:
-                    await accept_btn.click()
-                    await asyncio.sleep(1)
-            except:
-                pass
+        # Parse job cards from HTML using regex (Indeed embeds structured data)
+        # Look for job keys (jk= parameter) and associated metadata
+        # Indeed puts job data in mosaic-provider-jobcards model or inline HTML
 
-            # Scroll to load all results
-            for _ in range(3):
-                await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-                await asyncio.sleep(random.uniform(1.5, 2.5))
+        # Strategy 1: Extract from data attributes and structured HTML
+        jk_pattern = re.compile(r'data-jk="([a-f0-9]+)"')
+        title_pattern = re.compile(r'<h2[^>]*class="[^"]*jobTitle[^"]*"[^>]*>.*?<span[^>]*>([^<]+)</span>', re.DOTALL)
+        company_pattern = re.compile(r'data-testid="company-name"[^>]*>([^<]+)<', re.DOTALL)
 
-            # Try multiple card selectors (Indeed changes these)
-            card_selectors = [
-                '.job_seen_beacon',
-                '.jobCard_mainContent',
-                '.resultContent',
-                'div.cardOutline',
-                'td.resultContent',
-                'li[data-jk]',
-                '.tapItem',
-            ]
+        # Find all job keys
+        jk_matches = jk_pattern.findall(html)
+        seen_jks = set()
 
-            job_cards = []
-            used_selector = ''
-            for sel in card_selectors:
-                job_cards = await page.query_selector_all(sel)
-                if job_cards:
-                    used_selector = sel
-                    break
+        for jk in jk_matches:
+            if jk in seen_jks:
+                continue
+            seen_jks.add(jk)
 
-            logger.info(f"Indeed: found {len(job_cards)} cards using '{used_selector}'")
+            full_url = f'https://www.indeed.com/viewjob?jk={jk}'
+            jobs.append({
+                'job_id': f'indeed_{jk}',
+                'title': '',  # Will be filled by description fetch or left for manual review
+                'company': '',
+                'location': location,
+                'platform': 'indeed',
+                'url': full_url,
+                'description': '',
+                'posted_date': '',
+                'salary': '',
+                'job_type': 'Full-time',
+            })
 
-            if not job_cards:
-                # Fallback: find all Indeed job links
-                page_text = await page.inner_text('body')
-                logger.warning(f"No Indeed cards found. Page preview: {page_text[:500]}")
-                all_links = await page.query_selector_all('a[href*="jk="], a[data-jk]')
-                logger.info(f"Indeed fallback: found {len(all_links)} job links")
+            if len(jobs) >= max_results:
+                break
 
-                seen_jks = set()
-                for link_el in all_links[:max_results]:
-                    try:
-                        href = await link_el.get_attribute('href') or ''
-                        jk = await link_el.get_attribute('data-jk') or ''
-                        if not jk:
-                            jk_match = re.search(r'jk=([a-f0-9]+)', href)
-                            jk = jk_match.group(1) if jk_match else ''
-                        if not jk or jk in seen_jks:
-                            continue
-                        seen_jks.add(jk)
+        # Try to extract titles/companies from the HTML around each jk
+        for job in jobs:
+            jk = job['job_id'].replace('indeed_', '')
+            # Find the block containing this job key and extract title
+            block_pattern = re.compile(
+                rf'data-jk="{jk}".*?<h2[^>]*>.*?<span[^>]*>([^<]+)</span>.*?'
+                rf'(?:data-testid="company-name"[^>]*>([^<]+)<)?',
+                re.DOTALL
+            )
+            match = block_pattern.search(html)
+            if match:
+                job['title'] = match.group(1).strip() if match.group(1) else ''
+                job['company'] = match.group(2).strip() if match.group(2) else ''
 
-                        text = (await link_el.inner_text()).strip()
-                        if not text or len(text) < 3:
-                            continue
+            if not job['title']:
+                # Try reverse order: title before jk
+                rev_pattern = re.compile(
+                    rf'<span[^>]*title="([^"]+)"[^>]*>.*?data-jk="{jk}"',
+                    re.DOTALL
+                )
+                rev_match = rev_pattern.search(html)
+                if rev_match:
+                    job['title'] = rev_match.group(1).strip()
 
-                        full_url = f'https://www.indeed.com/viewjob?jk={jk}'
-                        jobs.append({
-                            'job_id': f'indeed_{jk}',
-                            'title': text,
-                            'company': '',
-                            'location': location,
-                            'platform': 'indeed',
-                            'url': full_url,
-                            'description': '',
-                            'posted_date': '',
-                            'salary': '',
-                            'job_type': 'Full-time',
-                        })
-                    except Exception as e:
-                        logger.debug(f"Error parsing Indeed fallback link: {e}")
-            else:
-                for card in job_cards[:max_results]:
-                    try:
-                        title_sels = ['h2.jobTitle a span', '.jobTitle span[title]', 'h2.jobTitle span', 'h2 a span', '.jobTitle a']
-                        company_sels = ['[data-testid="company-name"]', '.companyName', '.company_location .companyName', 'span.companyName']
-                        location_sels = ['[data-testid="text-location"]', '.companyLocation', '.company_location .companyLocation']
-                        link_sels = ['h2.jobTitle a', 'a.jcs-JobTitle', 'a[data-jk]', 'a[href*="jk="]']
-                        salary_sels = ['.salary-snippet-container', '.estimated-salary', '[data-testid="attribute_snippet_testid"]', '.salaryOnly']
+        # Filter out jobs without titles
+        jobs = [j for j in jobs if j['title']]
 
-                        title = ''
-                        for sel in title_sels:
-                            el = await card.query_selector(sel)
-                            if el:
-                                title = (await el.inner_text()).strip()
-                                if title:
-                                    break
+        if not jobs and jk_matches:
+            # We found job keys but couldn't parse titles — keep them with placeholder
+            for jk in list(seen_jks)[:max_results]:
+                jobs.append({
+                    'job_id': f'indeed_{jk}',
+                    'title': '(Indeed job — open to view)',
+                    'company': '',
+                    'location': location,
+                    'platform': 'indeed',
+                    'url': f'https://www.indeed.com/viewjob?jk={jk}',
+                    'description': '',
+                    'posted_date': '',
+                    'salary': '',
+                    'job_type': 'Full-time',
+                })
 
-                        company = ''
-                        for sel in company_sels:
-                            el = await card.query_selector(sel)
-                            if el:
-                                company = (await el.inner_text()).strip()
-                                if company:
-                                    break
+        logger.info(f"Indeed HTTP search found {len(jobs)} jobs (from {len(seen_jks)} job keys)")
 
-                        loc = ''
-                        for sel in location_sels:
-                            el = await card.query_selector(sel)
-                            if el:
-                                loc = (await el.inner_text()).strip()
-                                if loc:
-                                    break
+    except requests.exceptions.HTTPError as e:
+        if resp.status_code == 403:
+            logger.warning("Indeed returned 403 (Cloudflare blocked). Search results unavailable via HTTP.")
+        else:
+            logger.error(f"Indeed search HTTP error: {e}")
+    except Exception as e:
+        logger.error(f"Indeed search error: {e}", exc_info=True)
 
-                        salary = ''
-                        for sel in salary_sels:
-                            el = await card.query_selector(sel)
-                            if el:
-                                salary = (await el.inner_text()).strip()
-                                if salary:
-                                    break
-
-                        href = ''
-                        for sel in link_sels:
-                            el = await card.query_selector(sel)
-                            if el:
-                                href = await el.get_attribute('href') or ''
-                                if href:
-                                    break
-                        if href and not href.startswith('http'):
-                            href = 'https://www.indeed.com' + href
-
-                        if not title or not href:
-                            continue
-
-                        jk_match = re.search(r'jk=([a-f0-9]+)', href)
-                        job_id = 'indeed_' + (jk_match.group(1) if jk_match else _make_job_id('indeed', href)[-12:])
-
-                        jobs.append({
-                            'job_id':      job_id,
-                            'title':       title,
-                            'company':     company,
-                            'location':    loc or location,
-                            'platform':    'indeed',
-                            'url':         href,
-                            'description': '',
-                            'posted_date': '',
-                            'salary':      salary,
-                            'job_type':    'Full-time',
-                        })
-
-                    except Exception as e:
-                        logger.debug(f"Error parsing Indeed card: {e}")
-                        continue
-
-        except Exception as e:
-            logger.error(f"Indeed search error: {e}", exc_info=True)
-        finally:
-            await browser.close()
-
-    logger.info(f"Indeed search found {len(jobs)} jobs")
     return jobs
 
 
 async def fetch_indeed_description(url: str) -> str:
-    """Fetch full job description from Indeed."""
-    try:
-        from playwright.async_api import async_playwright
-    except ImportError:
-        return ''
+    """Fetch full job description from Indeed using HTTP requests."""
+    import requests
 
-    async with async_playwright() as p:
-        browser, context = await _get_browser(p, headless=True)
-        page = await context.new_page()
-        try:
-            await page.goto(url, wait_until='domcontentloaded', timeout=20000)
-            await asyncio.sleep(2)
-            desc_el = await page.query_selector('#jobDescriptionText, .jobsearch-jobDescriptionText')
-            desc = await desc_el.inner_text() if desc_el else ''
-            return desc.strip()
-        except Exception as e:
-            logger.debug(f"Could not fetch Indeed description: {e}")
-            return ''
-        finally:
-            await browser.close()
+    headers = {
+        'User-Agent': (
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/123.0.0.0 Safari/537.36'
+        ),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    }
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=15)
+        resp.raise_for_status()
+        html = resp.text
+        # Extract description text from the job description div
+        desc_match = re.search(
+            r'<div[^>]*id="jobDescriptionText"[^>]*>(.*?)</div>',
+            html, re.DOTALL
+        )
+        if desc_match:
+            # Strip HTML tags for plain text
+            desc_html = desc_match.group(1)
+            desc_text = re.sub(r'<[^>]+>', ' ', desc_html)
+            desc_text = re.sub(r'\s+', ' ', desc_text).strip()
+            return desc_text
+        return ''
+    except Exception as e:
+        logger.debug(f"Could not fetch Indeed description: {e}")
+        return ''
 
 
 # ─────────────────────────────────────────────────────────

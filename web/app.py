@@ -146,6 +146,18 @@ def apply_job(job_id):
     if not job:
         return jsonify({'error': 'Job not found'}), 404
 
+    # Indeed can't be automated (Cloudflare captcha blocks Playwright).
+    # Open in user's real browser for manual application.
+    if job.get('platform') == 'indeed':
+        import webbrowser
+        webbrowser.open(job['url'])
+        db.update_job_status(job_id, 'manual')
+        return jsonify({
+            'ok': True,
+            'manual': True,
+            'message': f"Opened in your browser — Indeed requires manual application."
+        })
+
     db.update_job_status(job_id, 'applying')
 
     def run_application():
@@ -232,15 +244,12 @@ def search():
                     li_jobs = _run_async(search_linkedin(
                         keywords, location,
                         li_session_cookie=settings.get('linkedin_session_cookie', '')
-                    ))
-                    if li_jobs is None:
-                        logger.warning("LinkedIn search returned None (cookie/auth issue)")
-                    else:
-                        for job in li_jobs:
-                            if job['url'] not in seen_urls:
-                                seen_urls.add(job['url'])
-                                all_jobs.append(job)
-                        logger.info(f"  LinkedIn total: {len(li_jobs)} jobs")
+                    )) or []
+                    for job in li_jobs:
+                        if job['url'] not in seen_urls:
+                            seen_urls.add(job['url'])
+                            all_jobs.append(job)
+                    logger.info(f"  LinkedIn total: {len(li_jobs)} jobs")
                 except Exception as e:
                     logger.error(f"  LinkedIn search failed: {e}")
 
@@ -459,10 +468,25 @@ def api_run_queue():
     if not queued:
         return jsonify({'message': 'No queued jobs'})
 
+    # Open Indeed jobs in real browser (can't automate past Cloudflare)
+    import webbrowser
+    indeed_count = 0
+    non_indeed = []
+    for job in queued:
+        if job.get('platform') == 'indeed':
+            webbrowser.open(job['url'])
+            db.update_job_status(job['id'], 'manual')
+            indeed_count += 1
+        else:
+            non_indeed.append(job)
+
+    if indeed_count:
+        logger.info(f"Opened {indeed_count} Indeed jobs in browser for manual application")
+
     def run_all():
         from src.applicator import apply_to_job
         settings = _load_settings()
-        for job in queued:
+        for job in non_indeed:
             db.update_job_status(job['id'], 'applying')
             result = _run_async(apply_to_job(job, settings))
             if result['success']:
@@ -473,8 +497,15 @@ def api_run_queue():
             else:
                 db.update_job_status(job['id'], 'failed', result.get('error', ''))
 
-    threading.Thread(target=run_all, daemon=True).start()
-    return jsonify({'message': f"Processing {len(queued)} queued applications..."})
+    if non_indeed:
+        threading.Thread(target=run_all, daemon=True).start()
+
+    parts = []
+    if non_indeed:
+        parts.append(f"Automating {len(non_indeed)} applications")
+    if indeed_count:
+        parts.append(f"Opened {indeed_count} Indeed jobs in your browser")
+    return jsonify({'message': '. '.join(parts) + '.'})
 
 
 @app.route('/api/resume-routing', methods=['POST'])

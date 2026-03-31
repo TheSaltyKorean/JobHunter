@@ -104,7 +104,10 @@
 function applyNow(id) {
   fetch(`/jobs/${id}/apply`, {method: 'POST'})
     .then(r => r.json())
-    .then(d => showToast(d.message || d.error, d.error ? 'error' : 'success'));
+    .then(d => {
+      showToast(d.message || d.error, d.error ? 'error' : 'success');
+      if (d.manual) setTimeout(() => location.reload(), 500);
+    });
 }
 
 function updateStatus(id, status) {

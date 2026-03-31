@@ -1697,36 +1697,6 @@ async def apply_to_job(job: dict, settings: dict) -> dict:
 
         page = await context.new_page()
 
-        # Indeed pre-login: open login page and wait for manual login
-        # (Indeed uses Cloudflare captcha + email verification codes, so
-        # automated login doesn't work — user must log in manually in the
-        # visible browser window)
-        if platform == 'indeed':
-            try:
-                logger.info("Opening Indeed login page — please log in manually...")
-                await page.goto(
-                    'https://secure.indeed.com/auth?hl=en&co=US&continue=https%3A%2F%2Fwww.indeed.com%2F',
-                    wait_until='domcontentloaded', timeout=20000
-                )
-                await _async_delay(2, 3)
-
-                # Check if already logged in (redirected to indeed.com homepage)
-                if 'secure.indeed.com' in page.url or 'auth' in page.url:
-                    logger.info("Waiting up to 120s for manual Indeed login (captcha + verification code)...")
-                    for i in range(120):
-                        await asyncio.sleep(1)
-                        current = page.url
-                        if 'secure.indeed.com' not in current and 'auth' not in current:
-                            logger.info(f"Indeed login detected, now at: {current}")
-                            await _async_delay(1, 2)
-                            break
-                        if i == 119:
-                            logger.warning("Indeed login timeout after 120s — continuing anyway")
-                else:
-                    logger.info(f"Already logged into Indeed, at: {page.url}")
-            except Exception as e:
-                logger.warning(f"Indeed pre-login failed (continuing anyway): {e}")
-
         try:
             if platform == 'linkedin':
                 result = await apply_linkedin(page, job, li_cookie)
