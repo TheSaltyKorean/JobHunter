@@ -35,6 +35,10 @@ const FIELD_RULES = [
   { patterns: ['last\\s*name', 'family\\s*name', 'surname'],        key: '_lastName',      type: 'input' },
   { patterns: ['full\\s*name', 'your\\s*name', 'legal\\s*name', 'candidate\\s*name', '^name$', '^name\\b'], key: '_fullName', type: 'input' },
 
+  // Login / Account fields
+  { patterns: ['password', 'create.*password', 'new.*password', 'confirm.*password'], key: '_password', type: 'input' },
+  { patterns: ['user\\s*name', 'login.*name', 'sign.*in.*name', 'user\\s*id', 'userid'], key: '_username', type: 'input' },
+
   // Contact
   { patterns: ['e-?mail', 'email\\s*address'],                      key: '_email',         type: 'input' },
   { patterns: ['phone', 'mobile', 'cell', 'telephone', 'contact\\s*number'], key: '_phone', type: 'input' },
@@ -433,11 +437,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const resumeNames  = await getResumeNames();
       const customQA     = await getCustomQA();
       const claudeReady  = await isClaudeServerRunning();
+      const credentials  = await new Promise(resolve => {
+        chrome.storage.local.get(['atsCredentials'], r => resolve(r.atsCredentials || {}));
+      });
 
       // Get resume as base64 for the content script
       const resumeFile = await getResumeBase64(msg.resumeType || 'it-mgmt');
 
-      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, hasClaudeKey: claudeReady });
+      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, credentials, hasClaudeKey: claudeReady });
     })();
     return true;
   }

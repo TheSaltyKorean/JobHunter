@@ -168,6 +168,32 @@ document.getElementById('save-custom-qa').addEventListener('click', () => {
   });
 });
 
+// ── ATS Login Credentials ───────────────────────────────────────────────
+function loadCredentials() {
+  chrome.storage.local.get(['atsCredentials', 'profile'], r => {
+    const cred = r.atsCredentials || {};
+    const profile = r.profile || {};
+    document.getElementById('cred-email').value    = cred.email    || profile.email || '';
+    document.getElementById('cred-username').value  = cred.username || '';
+    document.getElementById('cred-password').value  = cred.password || '';
+  });
+}
+
+document.getElementById('save-cred').addEventListener('click', () => {
+  const cred = {
+    email:    document.getElementById('cred-email').value.trim(),
+    username: document.getElementById('cred-username').value.trim(),
+    password: document.getElementById('cred-password').value,
+  };
+  chrome.storage.local.set({ atsCredentials: cred }, () => {
+    if (chrome.runtime.lastError) {
+      alert('Save failed: ' + chrome.runtime.lastError.message);
+    } else {
+      showSaved('cred-saved');
+    }
+  });
+});
+
 // ── Claude CLI server config ────────────────────────────────────────────
 function loadClaudeConfig() {
   chrome.storage.local.get(['claudeServerPort'], r => {
@@ -283,5 +309,6 @@ if (dashLink) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadSettings();
+loadCredentials();
 loadCustomQA();
 loadClaudeConfig();

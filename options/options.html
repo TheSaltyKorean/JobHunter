@@ -409,6 +409,43 @@
       </div>
     </div>
 
+    <!-- ATS Login Credentials card -->
+    <div class="card">
+      <div class="card-title">ATS Login Credentials</div>
+      <div class="card-subtitle">
+        Stored locally in your browser. Used to auto-fill sign-in and create-account pages on
+        Workday, Greenhouse, Taleo, and other ATS sites. Your email doubles as the login for most sites.
+      </div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label class="field-label">Login Email</label>
+          <input class="field-input" id="cred-email" type="email" placeholder="randy@example.com (same as profile email by default)">
+        </div>
+        <div class="field">
+          <label class="field-label">Username (Taleo, etc.)</label>
+          <input class="field-input" id="cred-username" type="text" placeholder="Optional — only needed for Taleo and similar">
+        </div>
+        <div class="field full">
+          <label class="field-label">Password</label>
+          <input class="field-input" id="cred-password" type="password" placeholder="Default password for ATS accounts">
+        </div>
+      </div>
+
+      <div class="detection-hint">
+        <strong>How it works:</strong> When Auto-Fill encounters a login/create-account page, it fills your email
+        (or username on Taleo) and password. If you've previously applied on a site, it logs you in.
+        If it's a new account, it fills the registration form with these credentials.
+        <br><br>
+        <strong>Security note:</strong> Credentials are stored in Chrome's local extension storage (never synced or sent anywhere).
+      </div>
+
+      <div class="card-footer">
+        <span class="saved-msg" id="cred-saved">&#10003; Credentials saved</span>
+        <button class="btn btn-primary" id="save-cred">Save Credentials</button>
+      </div>
+    </div>
+
     <!-- Resumes card -->
     <div class="card">
       <div class="card-title">Resumes</div>

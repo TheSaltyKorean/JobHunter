@@ -542,6 +542,9 @@
   }
 
   // ── Resolve a matched key to an actual value ──────────────────────────────
+  // Credentials are stored separately and passed in via runAutoFill
+  let _credentials = {};
+
   function resolveValue(key, profile, qa) {
     // Special profile keys (prefixed with _)
     const nameParts = (profile.name || '').split(/\s+/);
@@ -549,9 +552,11 @@
       '_firstName':  nameParts[0] || '',
       '_lastName':   nameParts.slice(1).join(' ') || '',
       '_fullName':   profile.name || '',
-      '_email':      profile.email || '',
+      '_email':      _credentials.email || profile.email || '',
       '_phone':      profile.phone || '',
       '_location':   profile.location || '',
+      '_password':   _credentials.password || '',
+      '_username':   _credentials.username || _credentials.email || profile.email || '',
     };
     if (key in map) return map[key];
     // Q&A key
@@ -580,6 +585,7 @@
     const profile  = data.profile  || {};
     const qa       = data.qa       || {};
     const customQA = data.customQA || [];
+    _credentials   = data.credentials || {};
 
     // 1. Upload resume
     logFill(log, 'Looking for resume upload field...', 'info');
