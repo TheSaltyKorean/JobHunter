@@ -1208,9 +1208,16 @@
   // ── Fill education sections ────────────────────────────────────────────────
   // Similar to fillExperience but for education blocks (School, Degree, etc.)
   async function fillEducation(educationData, log) {
-    if (!educationData || educationData.length === 0) return 0;
+    if (!educationData || educationData.length === 0) {
+      logFill(log, '⚠ No education data found in settings — skipping', 'warn');
+      return 0;
+    }
 
     let filled = 0;
+
+    // Log what data we have to help debug
+    const edu0 = educationData[0];
+    logFill(log, `Education data: school="${edu0.school || ''}", degree="${edu0.degree || ''}", field="${edu0.fieldOfStudy || ''}"`, 'info');
 
     const eduFieldPatterns = {
       school:      /school|university|college|institution|^school\s*name/i,
@@ -1230,6 +1237,13 @@
       const allFields = scanFormFields();
       const usedFields = new Set();
       let entryFilled = 0;
+
+      // Debug: show how many fields found and which are available for education
+      const available = allFields.filter(f => !f.filled && !experienceHandledElements.has(f.element));
+      logFill(log, `Education scan: ${allFields.length} total fields, ${available.length} available (not filled, not claimed by experience)`, 'info');
+      // Log first 10 available field labels for debugging
+      const labelSample = available.slice(0, 10).map(f => `"${f.label}" [${f.fieldType}]`).join(', ');
+      if (labelSample) logFill(log, `Available fields: ${labelSample}`, 'info');
 
       for (const field of allFields) {
         if (field.filled) continue;
