@@ -904,19 +904,71 @@
     const blob = new Blob([ab], { type: 'application/pdf' });
     const file = new File([blob], resumeFile.name, { type: 'application/pdf' });
 
-    for (const input of fileInputs) {
-      if (input.offsetParent === null && fileInputs.length > 1) continue;
+    // Try each file input — prefer visible ones, but also try hidden ones
+    const sorted = [...fileInputs].sort((a, b) => {
+      const aVis = a.offsetParent !== null ? 0 : 1;
+      const bVis = b.offsetParent !== null ? 0 : 1;
+      return aVis - bVis;
+    });
+
+    for (const input of sorted) {
       const accept = (input.accept || '').toLowerCase();
       if (accept && !accept.includes('pdf') && !accept.includes('*') && !accept.includes('.pdf')) continue;
 
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      input.files = dt.files;
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      logFill(log, `✓ Resume uploaded: ${resumeFile.name}`, 'success');
-      _resumeAlreadyUploaded = true;
-      return true;
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        input.files = dt.files;
+
+        // Fire multiple events to cover different frameworks (React, Angular, vanilla)
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        // React 16+ synthetic event trigger
+        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, 'value'
+        );
+        if (nativeInputValueSetter && nativeInputValueSetter.set) {
+          // For React: trigger the native setter to notify React's event system
+          input.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+        }
+
+        // Wait briefly and verify the file stuck
+        await new Promise(r => setTimeout(r, 500));
+
+        // Check if Paylocity/Workday rendered the upload confirmation
+        const uploadedItem = document.querySelector('[data-automation-id="file-upload-item"]');
+        if (uploadedItem || (input.files && input.files.length > 0)) {
+          logFill(log, `✓ Resume uploaded: ${resumeFile.name}`, 'success');
+          _resumeAlreadyUploaded = true;
+          return true;
+        }
+        logFill(log, 'File set on input but no confirmation detected, trying drop approach...', 'info');
+      } catch (e) {
+        logFill(log, `File input attempt failed: ${e.message}`, 'info');
+      }
+    }
+
+    // Fallback: try dispatching a drop event on the drop zone
+    const dropZone = document.querySelector('[data-automation-id="file-upload-drop-zone"]');
+    if (dropZone) {
+      try {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        const dropEvt = new DragEvent('drop', { bubbles: true, dataTransfer: dt });
+        dropZone.dispatchEvent(new DragEvent('dragenter', { bubbles: true, dataTransfer: dt }));
+        dropZone.dispatchEvent(new DragEvent('dragover', { bubbles: true, dataTransfer: dt }));
+        dropZone.dispatchEvent(dropEvt);
+
+        await new Promise(r => setTimeout(r, 1000));
+        const uploadedItem = document.querySelector('[data-automation-id="file-upload-item"]');
+        if (uploadedItem) {
+          logFill(log, `✓ Resume uploaded via drop: ${resumeFile.name}`, 'success');
+          _resumeAlreadyUploaded = true;
+          return true;
+        }
+      } catch (e) {
+        logFill(log, `Drop attempt failed: ${e.message}`, 'info');
+      }
     }
 
     logFill(log, '⚠ Could not attach resume to file input', 'warn');

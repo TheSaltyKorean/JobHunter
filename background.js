@@ -149,7 +149,7 @@ const FIELD_RULES = [
 
   // Fields to leave blank (optional / not applicable)
   { patterns: ['employee.*id', 'emp.*id', 'badge.*number', 'internal.*id'], key: '_blank', type: 'input' },
-  { patterns: ['skills', 'key\\s*skills', 'relevant\\s*skills'],     key: '_blank',         type: 'input' },
+  { patterns: ['skills', 'key\\s*skills', 'relevant\\s*skills', 'type.*skill'], key: '_blank', type: 'input' },
   { patterns: ['reason.*leav', 'why.*leav', 'reason.*depart'],       key: '_blank',         type: 'input' },
 
   // Signature date / today's date
