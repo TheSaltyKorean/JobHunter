@@ -955,6 +955,9 @@
       '_residency':        'No',
       '_blank':            '',
       '_today':            new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
+      '_todayDay':         String(new Date().getDate()),
+      '_todayMonth':       String(new Date().getMonth() + 1),
+      '_todayYear':        String(new Date().getFullYear()),
     };
     if (key in map) return map[key];
     // Q&A key

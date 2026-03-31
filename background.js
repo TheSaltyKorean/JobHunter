@@ -148,7 +148,10 @@ const FIELD_RULES = [
   { patterns: ['employee.*id', 'emp.*id', 'badge.*number', 'internal.*id'], key: '_blank', type: 'input' },
 
   // Signature date / today's date
-  { patterns: ['^day$', '^date$', 'today.*date', 'signature.*date', 'current.*date', '^date\\s*\\*?$'], key: '_today', type: 'input' },
+  { patterns: ['today.*date', 'signature.*date', 'current.*date', '^date\\s*\\*?$', '^date$'], key: '_today', type: 'input' },
+  { patterns: ['^day$', '^day\\s*\\*?$'], key: '_todayDay', type: 'input' },
+  { patterns: ['^month$', '^month\\s*\\*?$'], key: '_todayMonth', type: 'input' },
+  { patterns: ['^year$', '^year\\s*\\*?$'], key: '_todayYear', type: 'input' },
 ];
 
 // Compile regex once at startup
