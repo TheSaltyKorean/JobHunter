@@ -109,6 +109,7 @@ const FIELD_RULES = [
 
   // Work authorization
   { patterns: ['authorized.*work', 'work.*authoriz', 'eligible.*work', 'legally.*authorized', 'right to work', 'employment.*eligib', 'permission to work'], key: 'workAuthorization', type: 'select' },
+  { patterns: ['u\\.?s\\.?\\s*citizen', 'citizen.*national', 'lawful.*permanent', 'green.*card.*holder'], key: '_usCitizen', type: 'select' },
   { patterns: ['sponsor', 'visa.*sponsor', 'require.*sponsor', 'need.*sponsor', 'immigration.*sponsor'], key: 'sponsorship', type: 'select' },
   { patterns: ['relocat', 'willing.*relocat', 'open.*relocat'],     key: 'willingToRelocate', type: 'select' },
 
@@ -153,7 +154,7 @@ const FIELD_RULES = [
   { patterns: ['reason.*leav', 'why.*leav', 'reason.*depart'],       key: '_blank',         type: 'input' },
 
   // Signature date / today's date
-  { patterns: ['today.*date', 'signature.*date', 'current.*date', '^date\\s*\\*?$', '^date$'], key: '_today', type: 'input' },
+  { patterns: ['today.*date', 'signature.*date', 'current.*date', '^date\\s*\\*?$', '^date$', 'mm/dd/yyyy', 'mm-dd-yyyy'], key: '_today', type: 'input' },
   { patterns: ['^day$', '^day\\s*\\*?$'], key: '_todayDay', type: 'input' },
   { patterns: ['^month$', '^month\\s*\\*?$'], key: '_todayMonth', type: 'input' },
   { patterns: ['^year$', '^year\\s*\\*?$'], key: '_todayYear', type: 'input' },

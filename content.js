@@ -712,12 +712,24 @@
     }
 
     // Click to open the dropdown listbox — use full mouse event sequence for React
+    // If button already shows a value, it might need an extra click to re-open
+    btn.focus();
     btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
     btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
     // Wait for the listbox to render — Workday can be slow
     await new Promise(r => setTimeout(r, 500));
+
+    // If no listbox appeared, try clicking again (pre-filled buttons sometimes need double-click)
+    let listboxCheck = document.querySelectorAll('[role="listbox"]');
+    let anyVisible = [...listboxCheck].some(lb => { const r = lb.getBoundingClientRect(); return r.width > 0 && r.height > 0; });
+    if (!anyVisible) {
+      btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 500));
+    }
 
     // Workday renders a [role="listbox"] with [role="option"] children
     const listboxes = document.querySelectorAll('[role="listbox"]');
@@ -1005,6 +1017,7 @@
       '_criminalHistory':  'No',
       '_over18':           'Yes',
       '_residency':        'No',
+      '_usCitizen':        'Yes',
       '_blank':            '',
       '_today':            new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
       '_todayDay':         String(new Date().getDate()),
@@ -1632,6 +1645,11 @@
             logFill(log, `✓ ${label}`, 'success');
             filled++;
             if (field.fieldType === 'radio') filledGroups.add(field.element.name);
+            continue;
+          } else {
+            // Rule matched but fill failed — log warning and count as attempted
+            logFill(log, `⚠ ${label} — rule matched (${match.key}→"${value.substring(0, 20)}") but fill failed`, 'warn');
+            filled++; // Count as attempted so we don't send to Claude
             continue;
           }
         }
