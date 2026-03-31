@@ -452,24 +452,25 @@
     document.querySelectorAll('[data-uxi-widget-type="multiselect"]').forEach(container => {
       if (container.closest('#jh-sidebar')) return;
       if (container.offsetParent === null) return;
-      let label = extractFieldLabel(container);
-      // Workday multiselect label extraction often returns generic text like "multi Select Container"
-      // Try to find a better label from the parent fieldset/group or nearby label element
+      let label = '';
+      // Workday wraps multiselects in a div with data-automation-id="formField-fieldOfStudy"
+      // which has a <label> child — walk up to find it
+      const formField = container.closest('[data-automation-id^="formField"]');
+      if (formField) {
+        const lbl = formField.querySelector('label');
+        if (lbl) label = (lbl.innerText || lbl.textContent || '').trim();
+      }
+      // Fallback: try extractFieldLabel or look for any label with matching `for` attribute
       if (!label || /multi\s*select/i.test(label)) {
-        const fieldset = container.closest('fieldset, [data-automation-id]');
-        if (fieldset) {
-          const legend = fieldset.querySelector('legend label, legend, label');
-          if (legend) label = (legend.innerText || legend.textContent || '').trim();
+        // Check if any label's `for` matches an id inside this container
+        const innerIds = [...container.querySelectorAll('[id]')].map(el => el.id);
+        for (const id of innerIds) {
+          const lbl = document.querySelector(`label[for="${id}"]`);
+          if (lbl) { label = (lbl.innerText || lbl.textContent || '').trim(); break; }
         }
-        // Also try looking for a label sibling before this container
-        if (!label || /multi\s*select/i.test(label)) {
-          let prev = container.previousElementSibling;
-          for (let i = 0; i < 3 && prev; i++) {
-            const text = (prev.innerText || prev.textContent || '').trim();
-            if (text && text.length < 60 && !/multi\s*select/i.test(text)) { label = text; break; }
-            prev = prev.previousElementSibling;
-          }
-        }
+      }
+      if (!label || /multi\s*select/i.test(label)) {
+        label = extractFieldLabel(container);
       }
       const selected = container.querySelector('[data-automation-id="promptSelectionLabel"]');
       const hasSelections = selected && selected.textContent?.trim().length > 0;
