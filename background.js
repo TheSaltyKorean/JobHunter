@@ -77,6 +77,8 @@ const DEFAULT_QA = {
 // ─── Fuzzy Matching — maps question text patterns to answer keys ───────────
 const FIELD_RULES = [
   // Name fields
+  { patterns: ['middle\\s*name', 'middle\\s*initial'],               key: '_blank',         type: 'input' },
+  { patterns: ['preferred\\s*name', 'nickname', 'known\\s*as', 'goes\\s*by'], key: '_blank', type: 'input' },
   { patterns: ['first\\s*name', 'given\\s*name', 'nombre'],         key: '_firstName',     type: 'input' },
   { patterns: ['last\\s*name', 'family\\s*name', 'surname'],        key: '_lastName',      type: 'input' },
   { patterns: ['full\\s*name', 'your\\s*name', 'legal\\s*name', 'candidate\\s*name', '^name$', '^name\\b'], key: '_fullName', type: 'input' },
@@ -92,7 +94,8 @@ const FIELD_RULES = [
 
   // Address fields
   { patterns: ['street.*address', 'address.*line.*1', 'address\\s*1', 'mailing.*address', 'home.*address'], key: '_street', type: 'input' },
-  { patterns: ['address.*line.*2', 'address\\s*2', 'apt', 'suite', 'unit'],  key: '_street2',   type: 'input' },
+  { patterns: ['address.*line.*2', 'address\\s*2', 'apt', 'suite', 'unit'],  key: '_blank',     type: 'input' },
+  { patterns: ['county'],                                                      key: '_blank',     type: 'input' },
   { patterns: ['^city$', 'city\\b', 'current.*city', 'where.*located'],       key: '_city',      type: 'input' },
   { patterns: ['^state$', 'state\\b', 'province', 'region'],                  key: '_state',     type: 'select' },
   { patterns: ['zip', 'postal.*code', 'post.*code', 'zip.*code'],             key: '_zip',       type: 'input' },
@@ -133,7 +136,7 @@ const FIELD_RULES = [
   { patterns: ['cover.*letter', 'letter.*motivation'],               key: 'coverLetter',   type: 'textarea' },
   { patterns: ['additional.*info', 'anything.*else', 'comments', 'notes.*recruiter'], key: 'additionalInfo', type: 'textarea' },
   { patterns: ['how.*hear', 'where.*hear', 'how.*find', 'referral.*source', 'source'], key: 'howDidYouHear', type: 'input' },
-  { patterns: ['referred.*by', 'referr'],                           key: 'referredBy',     type: 'input' },
+  { patterns: ['referred.*by', 'referr'],                           key: '_blank',         type: 'input' },
 
   // Common yes/no questions
   { patterns: ['previously.*worked', 'previously.*employed', 'former.*employee', 'ever.*worked.*for', 'have you.*worked'], key: '_previouslyWorked', type: 'select' },
@@ -144,8 +147,10 @@ const FIELD_RULES = [
   { patterns: ['18.*years', 'over.*18', 'age.*18', 'at.*least.*18', 'legally.*age'], key: '_over18', type: 'select' },
   { patterns: ['resident.*of', 'reside.*in', 'do you live', 'currently.*reside', 'b(?:o|u)r(?:o|ou)ughs?'], key: '_residency', type: 'select' },
 
-  // Fields to leave blank (employee ID, internal codes)
+  // Fields to leave blank (optional / not applicable)
   { patterns: ['employee.*id', 'emp.*id', 'badge.*number', 'internal.*id'], key: '_blank', type: 'input' },
+  { patterns: ['skills', 'key\\s*skills', 'relevant\\s*skills'],     key: '_blank',         type: 'input' },
+  { patterns: ['reason.*leav', 'why.*leav', 'reason.*depart'],       key: '_blank',         type: 'input' },
 
   // Signature date / today's date
   { patterns: ['today.*date', 'signature.*date', 'current.*date', '^date\\s*\\*?$', '^date$'], key: '_today', type: 'input' },
