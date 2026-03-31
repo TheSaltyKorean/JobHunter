@@ -634,35 +634,51 @@
 
   // ── Fill Workday multi-select typeahead ────────────────────────────────────
   // Workday renders multi-select as a div with data-uxi-widget-type="multiselect"
-  // Must click to focus, type text, wait for suggestions, then select
+  // Must click to open, simulate keyboard typing to trigger search, then select
   async function fillWorkdayMultiselect(container, value) {
-    // Click the input area to focus it
+    // Click the input container to open / focus
     const inputArea = container.querySelector('[data-automation-id="multiselectInputContainer"]');
     if (!inputArea) return false;
     inputArea.click();
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(r => setTimeout(r, 300));
 
-    // Type the search text — dispatch keystrokes
-    const searchInput = container.querySelector('input[type="text"]') || inputArea;
-    searchInput.focus();
-    // Set value via native setter
-    const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-    if (nativeSet && searchInput.tagName === 'INPUT') {
-      nativeSet.call(searchInput, value);
-    } else {
-      searchInput.textContent = value;
+    // After clicking, Workday may render a real <input> inside the container
+    let searchInput = container.querySelector('input[type="text"]:not([class*="hidden"])');
+    if (!searchInput) searchInput = container.querySelector('input');
+    if (!searchInput) {
+      // Workday sometimes creates the input only after focus
+      inputArea.focus();
+      inputArea.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      inputArea.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      inputArea.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 300));
+      searchInput = container.querySelector('input[type="text"]') || container.querySelector('input');
     }
-    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-    searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+    if (searchInput) {
+      searchInput.focus();
+      // Simulate typing character by character for Workday's React event handling
+      const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      for (let i = 1; i <= value.length; i++) {
+        const partial = value.substring(0, i);
+        if (nativeSet) nativeSet.call(searchInput, partial);
+        else searchInput.value = partial;
+        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+        searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: value[i-1], bubbles: true }));
+        searchInput.dispatchEvent(new KeyboardEvent('keyup', { key: value[i-1], bubbles: true }));
+      }
+      searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+    }
 
     // Wait for suggestions to appear
-    await new Promise(r => setTimeout(r, 800));
+    await new Promise(r => setTimeout(r, 1000));
 
-    // Find and click the first matching option in any listbox
+    // Find and click the first matching option in any visible listbox
     const listboxes = document.querySelectorAll('[role="listbox"]');
+    const lower = value.toLowerCase();
     for (const listbox of listboxes) {
+      if (listbox.offsetParent === null) continue; // skip hidden
       const options = listbox.querySelectorAll('[role="option"]');
-      const lower = value.toLowerCase();
       for (const opt of options) {
         const text = (opt.textContent || '').trim().toLowerCase();
         if (text.includes(lower) || lower.includes(text)) {
@@ -670,6 +686,11 @@
           return true;
         }
       }
+    }
+
+    // Fallback: try pressing Enter to select first suggestion
+    if (searchInput) {
+      searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
     }
     return false;
   }
@@ -716,24 +737,21 @@
       return false;
     }
 
-    // Check if a file is already attached (native or Workday file-upload-item)
+    // Check if a file is already attached (native check + Workday DOM check)
     for (const input of fileInputs) {
       if (input.files && input.files.length > 0) {
         logFill(log, `✓ Resume already attached: ${input.files[0].name} (skipping)`, 'success');
         _resumeAlreadyUploaded = true;
         return true;
       }
-      // Workday renders uploaded files as sibling elements with data-automation-id="file-upload-item"
-      const container = input.closest('[data-automation-id]') || input.parentElement;
-      if (container) {
-        const existingFile = container.parentElement?.querySelector('[data-automation-id="file-upload-item"]');
-        if (existingFile) {
-          const fileName = existingFile.textContent?.trim().substring(0, 40) || 'file';
-          logFill(log, `✓ Resume already attached: ${fileName} (skipping)`, 'success');
-          _resumeAlreadyUploaded = true;
-          return true;
-        }
-      }
+    }
+    // Workday renders uploaded files as data-automation-id="file-upload-item" anywhere on page
+    const existingFiles = document.querySelectorAll('[data-automation-id="file-upload-item"]');
+    if (existingFiles.length > 0) {
+      const fileName = existingFiles[0].textContent?.trim().substring(0, 40) || 'file';
+      logFill(log, `✓ Resume already attached: ${fileName} (skipping)`, 'success');
+      _resumeAlreadyUploaded = true;
+      return true;
     }
 
     // Convert base64 to File object
@@ -875,16 +893,24 @@
     // ── Workday-specific date filler ──
     // Workday uses custom spinbutton date inputs with data-automation-id
     // Standard fillField doesn't work — must set aria-valuenow/aria-valuetext
-    function fillWorkdaySpinbutton(input, numericValue) {
+    // Set a Workday spinbutton value WITHOUT triggering events (silent)
+    function setSpinbuttonValue(input, numericValue) {
       const val = String(numericValue);
-      // Set value via native setter
       const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
       if (nativeSet) nativeSet.call(input, val);
       else input.value = val;
-      // Set ARIA attributes that Workday reads for validation
       input.setAttribute('aria-valuenow', val);
       input.setAttribute('aria-valuetext', val);
-      // Dispatch events Workday listens for
+      // Also update the display div (sibling with -display suffix)
+      const displayId = input.id?.replace('-input', '-display');
+      if (displayId) {
+        const display = document.getElementById(displayId);
+        if (display) display.textContent = val.padStart(2, '0');
+      }
+    }
+
+    // Trigger events on a spinbutton AFTER value is set
+    function triggerSpinbuttonEvents(input) {
       input.focus();
       input.dispatchEvent(new Event('input', { bubbles: true }));
       input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -927,14 +953,24 @@
           year  = exp.endYear;
         }
 
+        // CRITICAL: Set BOTH values silently FIRST, then trigger events
+        // This prevents Workday from validating month when year is still empty
+        if (yearInput && year) {
+          setSpinbuttonValue(yearInput, parseInt(year));
+        }
         if (monthInput && month) {
-          fillWorkdaySpinbutton(monthInput, parseInt(month));
-          logFill(log, `✓ Experience: ${isFrom ? 'From' : 'To'} Month → ${month}`, 'success');
+          setSpinbuttonValue(monthInput, parseInt(month));
+        }
+
+        // NOW trigger events — year first so validation sees complete date
+        if (yearInput && year) {
+          triggerSpinbuttonEvents(yearInput);
+          logFill(log, `✓ Experience: ${isFrom ? 'From' : 'To'} Year → ${year}`, 'success');
           filled++;
         }
-        if (yearInput && year) {
-          fillWorkdaySpinbutton(yearInput, parseInt(year));
-          logFill(log, `✓ Experience: ${isFrom ? 'From' : 'To'} Year → ${year}`, 'success');
+        if (monthInput && month) {
+          triggerSpinbuttonEvents(monthInput);
+          logFill(log, `✓ Experience: ${isFrom ? 'From' : 'To'} Month → ${month}`, 'success');
           filled++;
         }
       }
