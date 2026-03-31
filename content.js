@@ -442,8 +442,17 @@
       if (btn.closest('#jh-sidebar')) return;
       if (btn.offsetParent === null) return;
       const label = extractFieldLabel(btn);
-      const currentText = btn.textContent?.trim() || '';
       fields.push({ element: btn, label, fieldType: 'workday-listbox', filled: false });
+    });
+
+    // Workday multi-select typeahead containers
+    document.querySelectorAll('[data-uxi-widget-type="multiselect"]').forEach(container => {
+      if (container.closest('#jh-sidebar')) return;
+      if (container.offsetParent === null) return;
+      const label = extractFieldLabel(container);
+      const selected = container.querySelector('[data-automation-id="promptSelectionLabel"]');
+      const hasSelections = selected && selected.textContent?.trim().length > 0;
+      fields.push({ element: container, label, fieldType: 'workday-multiselect', filled: hasSelections });
     });
 
     return fields;
@@ -465,6 +474,9 @@
     }
     if (field.fieldType === 'workday-listbox') {
       return await fillWorkdayListbox(el, value);
+    }
+    if (field.fieldType === 'workday-multiselect') {
+      return await fillWorkdayMultiselect(el, value);
     }
     // text input or textarea
     const existing = (el.value || '').trim();
@@ -620,6 +632,48 @@
     });
   }
 
+  // ── Fill Workday multi-select typeahead ────────────────────────────────────
+  // Workday renders multi-select as a div with data-uxi-widget-type="multiselect"
+  // Must click to focus, type text, wait for suggestions, then select
+  async function fillWorkdayMultiselect(container, value) {
+    // Click the input area to focus it
+    const inputArea = container.querySelector('[data-automation-id="multiselectInputContainer"]');
+    if (!inputArea) return false;
+    inputArea.click();
+    await new Promise(r => setTimeout(r, 200));
+
+    // Type the search text — dispatch keystrokes
+    const searchInput = container.querySelector('input[type="text"]') || inputArea;
+    searchInput.focus();
+    // Set value via native setter
+    const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    if (nativeSet && searchInput.tagName === 'INPUT') {
+      nativeSet.call(searchInput, value);
+    } else {
+      searchInput.textContent = value;
+    }
+    searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+    searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Wait for suggestions to appear
+    await new Promise(r => setTimeout(r, 800));
+
+    // Find and click the first matching option in any listbox
+    const listboxes = document.querySelectorAll('[role="listbox"]');
+    for (const listbox of listboxes) {
+      const options = listbox.querySelectorAll('[role="option"]');
+      const lower = value.toLowerCase();
+      for (const opt of options) {
+        const text = (opt.textContent || '').trim().toLowerCase();
+        if (text.includes(lower) || lower.includes(text)) {
+          opt.click();
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // ── Auto-check consent/agreement checkboxes ────────────────────────────────
   // These are always checked regardless of Q&A rules — privacy notices, ToS, etc.
   function autoCheckConsentBoxes(log) {
@@ -662,12 +716,23 @@
       return false;
     }
 
-    // Check if a file is already attached
+    // Check if a file is already attached (native or Workday file-upload-item)
     for (const input of fileInputs) {
       if (input.files && input.files.length > 0) {
         logFill(log, `✓ Resume already attached: ${input.files[0].name} (skipping)`, 'success');
         _resumeAlreadyUploaded = true;
         return true;
+      }
+      // Workday renders uploaded files as sibling elements with data-automation-id="file-upload-item"
+      const container = input.closest('[data-automation-id]') || input.parentElement;
+      if (container) {
+        const existingFile = container.parentElement?.querySelector('[data-automation-id="file-upload-item"]');
+        if (existingFile) {
+          const fileName = existingFile.textContent?.trim().substring(0, 40) || 'file';
+          logFill(log, `✓ Resume already attached: ${fileName} (skipping)`, 'success');
+          _resumeAlreadyUploaded = true;
+          return true;
+        }
       }
     }
 
@@ -1001,7 +1066,14 @@
               entryFilled++;
             }
           } else if (!value) {
-            logFill(log, `⚠ Experience: ${label.substring(0, 40)} — no data to fill`, 'warn');
+            // Suppress warnings for expected empty fields:
+            // - "I currently work here" is only set on current jobs
+            // - "To" dates are blank for current jobs
+            const isExpectedEmpty = (key === 'current' && !exp.current) ||
+              ((key === 'endDate' || key === 'endMonth' || key === 'endYear') && exp.current);
+            if (!isExpectedEmpty) {
+              logFill(log, `⚠ Experience: ${label.substring(0, 40)} — no data to fill`, 'warn');
+            }
           }
           break; // matched a pattern, move to next field
         }
@@ -1012,6 +1084,8 @@
       // under a parent labeled "From *" or "To *"
       for (const field of orphanDateFields) {
         if (usedFields.has(field.element)) continue;
+        // Skip if Workday-specific fillWorkdayDates already handled this
+        if (experienceHandledElements.has(field.element)) continue;
         const label = field.label.toLowerCase().trim();
         const isMonth = /^month/.test(label);
         const isYear  = /^year/.test(label);
@@ -1051,7 +1125,10 @@
           usedFields.add(field.element);
           entryFilled++;
         } else if (!value && context) {
-          logFill(log, `⚠ Experience: ${context} ${label} — no data to fill`, 'warn');
+          // Only warn if it's NOT an expected empty (current job has no To date)
+          if (!(context === 'to' && exp.current)) {
+            logFill(log, `⚠ Experience: ${context} ${label} — no data to fill`, 'warn');
+          }
         } else if (!context) {
           logFill(log, `⚠ Experience: ${label} — could not determine From/To context`, 'warn');
         }
@@ -1077,10 +1154,10 @@
     }
 
     // Fill first entry from existing fields
+    // Workday-specific: fill spinbutton dates FIRST so fillOneEntry can skip them
+    filled += fillWorkdayDates(workExperience[0]);
     const firstFilled = await fillOneEntry(workExperience[0]);
     filled += firstFilled;
-    // Workday-specific: fill spinbutton date inputs for this entry
-    filled += fillWorkdayDates(workExperience[0]);
 
     // For remaining entries, click "Add Another" and fill
     for (let i = 1; i < workExperience.length; i++) {
@@ -1090,10 +1167,9 @@
       }
       // Wait for new empty fields to appear in the DOM after clicking Add Another
       await new Promise(resolve => setTimeout(resolve, 800));
-      const entryFilled = await fillOneEntry(workExperience[i]);
-      filled += entryFilled;
-      // Workday-specific: fill spinbutton date inputs for this entry
+      // Workday-specific: fill spinbutton dates FIRST
       filled += fillWorkdayDates(workExperience[i]);
+      const entryFilled = await fillOneEntry(workExperience[i]);
       if (entryFilled === 0 && filled === 0) {
         logFill(log, `No fields found for experience entry ${i + 1}`, 'warn');
         break;
