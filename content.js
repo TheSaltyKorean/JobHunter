@@ -953,6 +953,8 @@
       '_criminalHistory':  'No',
       '_over18':           'Yes',
       '_residency':        'No',
+      '_blank':            '',
+      '_today':            new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
     };
     if (key in map) return map[key];
     // Q&A key
@@ -1576,6 +1578,11 @@
       });
 
       if (match) {
+        // '_blank' means intentionally leave empty — skip without going to Claude
+        if (match.key === '_blank') {
+          logFill(log, `⊘ ${label} — intentionally left blank`, 'info');
+          skipped++; continue;
+        }
         const value = resolveValue(match.key, profile, qa);
         if (value) {
           if (await fillField(field, value)) {

@@ -143,6 +143,12 @@ const FIELD_RULES = [
   { patterns: ['felony', 'convicted', 'criminal.*record', 'criminal.*history', 'been convicted'], key: '_criminalHistory', type: 'select' },
   { patterns: ['18.*years', 'over.*18', 'age.*18', 'at.*least.*18', 'legally.*age'], key: '_over18', type: 'select' },
   { patterns: ['resident.*of', 'reside.*in', 'do you live', 'currently.*reside', 'b(?:o|u)r(?:o|ou)ughs?'], key: '_residency', type: 'select' },
+
+  // Fields to leave blank (employee ID, internal codes)
+  { patterns: ['employee.*id', 'emp.*id', 'badge.*number', 'internal.*id'], key: '_blank', type: 'input' },
+
+  // Signature date / today's date
+  { patterns: ['^day$', '^date$', 'today.*date', 'signature.*date', 'current.*date', '^date\\s*\\*?$'], key: '_today', type: 'input' },
 ];
 
 // Compile regex once at startup
