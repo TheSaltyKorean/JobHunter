@@ -869,6 +869,72 @@
     return mm ? `${mm}/${yr}` : yr;
   }
 
+  // ── Workday-specific date filler (outer scope so both experience & education can use it) ──
+  // Workday spinbuttons are React controlled components — DOM value changes
+  // are ignored. We use execCommand('insertText') to trigger React's synthetic events.
+  function typeIntoSpinbutton(input, value) {
+    const val = String(value);
+    input.focus();
+    input.select();
+    document.execCommand('selectAll', false, null);
+    document.execCommand('insertText', false, val);
+    input.setAttribute('aria-valuenow', val);
+    input.setAttribute('aria-valuetext', val);
+  }
+
+  async function fillWorkdayDates(exp, log, handledSet) {
+    handledSet = handledSet || experienceHandledElements;
+    const wrappers = document.querySelectorAll('[data-automation-id="dateInputWrapper"]');
+    let filled = 0;
+    for (const wrapper of wrappers) {
+      if (experienceHandledElements.has(wrapper)) continue;
+      if (educationHandledElements.has(wrapper)) continue;
+      const fieldset = wrapper.closest('fieldset');
+      if (!fieldset) continue;
+      const legend = fieldset.querySelector('legend label, legend');
+      const legendText = (legend?.innerText || '').trim().toLowerCase();
+      const isFrom = /^from\b/.test(legendText);
+      const isTo   = /^to\b/.test(legendText);
+      if (!isFrom && !isTo) continue;
+
+      const monthInput = wrapper.querySelector('[data-automation-id="dateSectionMonth-input"]');
+      const yearInput  = wrapper.querySelector('[data-automation-id="dateSectionYear-input"]');
+      if (!monthInput && !yearInput) continue;
+
+      handledSet.add(wrapper);
+      if (monthInput) handledSet.add(monthInput);
+      if (yearInput)  handledSet.add(yearInput);
+
+      let month, year;
+      if (isFrom) {
+        month = exp.startMonth;
+        year  = exp.startYear;
+      } else if (isTo) {
+        if (exp.current) continue;
+        month = exp.endMonth;
+        year  = exp.endYear;
+      }
+
+      const label = isFrom ? 'From' : 'To';
+      if (yearInput && year) {
+        typeIntoSpinbutton(yearInput, parseInt(year));
+        await new Promise(r => setTimeout(r, 100));
+        yearInput.blur();
+        logFill(log, `✓ ${label} Year → ${year}`, 'success');
+        filled++;
+      }
+      await new Promise(r => setTimeout(r, 200));
+      if (monthInput && month) {
+        typeIntoSpinbutton(monthInput, parseInt(month));
+        await new Promise(r => setTimeout(r, 100));
+        monthInput.blur();
+        logFill(log, `✓ ${label} Month → ${month}`, 'success');
+        filled++;
+      }
+    }
+    return filled;
+  }
+
   // ── Fill work experience sections ──────────────────────────────────────────
   // Many ATS forms have repeating "Work Experience" blocks with fields for
   // title, company, start/end date, description, etc.
@@ -892,80 +958,6 @@
       current:     /current.*work|currently.*work|i currently work|present.*employ|still.*work|work.*here/i,
       description: /responsibilit|description|duties|summary|accomplishment|role.*description/i,
     };
-
-    // ── Workday-specific date filler ──
-    // Workday spinbuttons are React controlled components — DOM value changes
-    // are ignored. We must use execCommand('insertText') to trigger React's
-    // synthetic event system, or simulate keyboard input the way a real user would.
-    function typeIntoSpinbutton(input, value) {
-      const val = String(value);
-      input.focus();
-      // Select all existing content and replace it
-      input.select();
-      document.execCommand('selectAll', false, null);
-      document.execCommand('insertText', false, val);
-      // Also update aria attributes for accessibility
-      input.setAttribute('aria-valuenow', val);
-      input.setAttribute('aria-valuetext', val);
-    }
-
-    async function fillWorkdayDates(exp, handledSet) {
-      handledSet = handledSet || experienceHandledElements;
-      // Find all date wrappers with data-automation-id="dateInputWrapper"
-      const wrappers = document.querySelectorAll('[data-automation-id="dateInputWrapper"]');
-      let filled = 0;
-      for (const wrapper of wrappers) {
-        // Skip if already handled
-        if (experienceHandledElements.has(wrapper)) continue;
-        if (educationHandledElements.has(wrapper)) continue;
-        // Determine if this is a "From" or "To" date by checking the parent fieldset legend
-        const fieldset = wrapper.closest('fieldset');
-        if (!fieldset) continue;
-        const legend = fieldset.querySelector('legend label, legend');
-        const legendText = (legend?.innerText || '').trim().toLowerCase();
-        const isFrom = /^from\b/.test(legendText);
-        const isTo   = /^to\b/.test(legendText);
-        if (!isFrom && !isTo) continue;
-
-        // Find month and year spinbutton inputs inside this wrapper
-        const monthInput = wrapper.querySelector('[data-automation-id="dateSectionMonth-input"]');
-        const yearInput  = wrapper.querySelector('[data-automation-id="dateSectionYear-input"]');
-        if (!monthInput && !yearInput) continue;
-
-        handledSet.add(wrapper);
-        if (monthInput) handledSet.add(monthInput);
-        if (yearInput)  handledSet.add(yearInput);
-
-        let month, year;
-        if (isFrom) {
-          month = exp.startMonth;
-          year  = exp.startYear;
-        } else if (isTo) {
-          if (exp.current) continue; // skip end date for current job
-          month = exp.endMonth;
-          year  = exp.endYear;
-        }
-
-        // Type year FIRST so when month triggers validation, year is already set
-        if (yearInput && year) {
-          typeIntoSpinbutton(yearInput, parseInt(year));
-          await new Promise(r => setTimeout(r, 100));
-          yearInput.blur();
-          logFill(log, `✓ Experience: ${isFrom ? 'From' : 'To'} Year → ${year}`, 'success');
-          filled++;
-        }
-        // Small pause to let Workday process the year
-        await new Promise(r => setTimeout(r, 200));
-        if (monthInput && month) {
-          typeIntoSpinbutton(monthInput, parseInt(month));
-          await new Promise(r => setTimeout(r, 100));
-          monthInput.blur();
-          logFill(log, `✓ Experience: ${isFrom ? 'From' : 'To'} Month → ${month}`, 'success');
-          filled++;
-        }
-      }
-      return filled;
-    }
 
     // Reset the set each time fillExperience runs (fresh scan)
     experienceHandledElements = new Set();
@@ -1181,7 +1173,7 @@
 
     // Fill first entry from existing fields
     // Workday-specific: fill spinbutton dates FIRST so fillOneEntry can skip them
-    filled += await fillWorkdayDates(workExperience[0]);
+    filled += await fillWorkdayDates(workExperience[0], log);
     const firstFilled = await fillOneEntry(workExperience[0]);
     filled += firstFilled;
 
@@ -1194,7 +1186,7 @@
       // Wait for new empty fields to appear in the DOM after clicking Add Another
       await new Promise(resolve => setTimeout(resolve, 800));
       // Workday-specific: fill spinbutton dates FIRST
-      filled += await fillWorkdayDates(workExperience[i]);
+      filled += await fillWorkdayDates(workExperience[i], log);
       const entryFilled = await fillOneEntry(workExperience[i]);
       if (entryFilled === 0 && filled === 0) {
         logFill(log, `No fields found for experience entry ${i + 1}`, 'warn');
@@ -1304,7 +1296,7 @@
     }
 
     // Workday-specific: fill spinbutton dates FIRST for education too
-    filled += await fillWorkdayDates(educationData[0], educationHandledElements);
+    filled += await fillWorkdayDates(educationData[0], log, educationHandledElements);
     const firstFilled = await fillOneEduEntry(educationData[0]);
     filled += firstFilled;
 
@@ -1314,7 +1306,7 @@
         break;
       }
       await new Promise(resolve => setTimeout(resolve, 800));
-      filled += await fillWorkdayDates(educationData[i], educationHandledElements);
+      filled += await fillWorkdayDates(educationData[i], log, educationHandledElements);
       const entryFilled = await fillOneEduEntry(educationData[i]);
       filled += entryFilled;
       if (entryFilled === 0) break;
