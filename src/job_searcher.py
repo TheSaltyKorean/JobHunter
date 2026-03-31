@@ -211,15 +211,41 @@ async def search_linkedin(keywords: list, location: str,
 
                 logger.info(f"Landed on: {page.url}")
 
-                # Scroll to load more results
-                for scroll in range(4):
+                # Scroll to load more results — LinkedIn uses infinite scroll
+                prev_count = 0
+                for scroll in range(10):
                     await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-                    await asyncio.sleep(random.uniform(1.5, 3))
+                    await asyncio.sleep(random.uniform(2, 3.5))
+
+                    # Click "See more jobs" / "Show more" button if present
                     try:
-                        see_more = await page.query_selector('button.infinite-scroller__show-more-button, button[aria-label*="more jobs"]')
-                        if see_more:
+                        see_more = await page.query_selector(
+                            'button.infinite-scroller__show-more-button, '
+                            'button[aria-label*="more jobs"], '
+                            'button[aria-label*="See more"], '
+                            'button.jobs-search-results-list__load-more'
+                        )
+                        if see_more and await see_more.is_visible():
                             await see_more.click()
-                            await asyncio.sleep(2)
+                            logger.debug(f"  Clicked 'See more' button (scroll {scroll+1})")
+                            await asyncio.sleep(random.uniform(2, 4))
+                    except:
+                        pass
+
+                    # Check if we've loaded enough — stop scrolling early if no new cards appear
+                    try:
+                        current_cards = await page.query_selector_all(
+                            'div.job-card-container, .job-search-card, '
+                            '.scaffold-layout__list-item, li[data-occludable-job-id]'
+                        )
+                        current_count = len(current_cards)
+                        if current_count >= max_results:
+                            logger.debug(f"  Reached {current_count} cards, enough")
+                            break
+                        if current_count == prev_count and scroll > 2:
+                            logger.debug(f"  No new cards after scroll {scroll+1} ({current_count} total)")
+                            break
+                        prev_count = current_count
                     except:
                         pass
 
