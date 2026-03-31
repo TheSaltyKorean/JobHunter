@@ -83,6 +83,15 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "commands": {
+    "toggle-sidebar": {
+      "suggested_key": {
+        "default": "Alt+J",
+        "mac": "Alt+J"
+      },
+      "description": "Toggle JobHunter sidebar"
+    }
+  },
   "web_accessible_resources": [
     {
       "resources": ["dashboard/dashboard.html"],

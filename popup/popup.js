@@ -1,7 +1,8 @@
 // JobHunter Popup
 
 document.addEventListener('DOMContentLoaded', async () => {
-  const { data: jobs = [] } = await chrome.runtime.sendMessage({ type: 'GET_JOBS' });
+  const resp = await chrome.runtime.sendMessage({ type: 'GET_JOBS' });
+  const jobs = (resp?.jobs || []).sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
 
   // Stats
   const counts = { saved: 0, applied: 0, interview: 0, offer: 0 };
@@ -38,6 +39,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Buttons
   document.getElementById('btn-dashboard').addEventListener('click', () => {
     chrome.runtime.sendMessage({ type: 'OPEN_DASHBOARD' });
+    window.close();
+  });
+
+  document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'TOGGLE_SIDEBAR' });
     window.close();
   });
 

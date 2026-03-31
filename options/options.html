@@ -30,7 +30,6 @@
       min-height: 100vh;
     }
 
-    /* ── Layout ── */
     .layout { display: flex; min-height: 100vh; }
 
     /* ── Sidebar ── */
@@ -75,7 +74,7 @@
     .main {
       flex: 1;
       padding: 40px;
-      max-width: 700px;
+      max-width: 760px;
     }
 
     .page-title {
@@ -105,7 +104,7 @@
       margin-bottom: 20px;
     }
 
-    /* ── Avatar preview ── */
+    /* ── Avatar ── */
     .avatar-row {
       display: flex;
       align-items: center;
@@ -144,7 +143,7 @@
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
-    .field-input, .field-textarea {
+    .field-input, .field-textarea, .field-select {
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 8px;
@@ -155,8 +154,9 @@
       outline: none;
       transition: border-color 0.15s;
     }
-    .field-input:focus, .field-textarea:focus { border-color: var(--purple); }
+    .field-input:focus, .field-textarea:focus, .field-select:focus { border-color: var(--purple); }
     .field-textarea { resize: vertical; min-height: 80px; }
+    .field-select option { background: var(--bg); }
 
     /* ── Resume rows ── */
     .resume-list { display: flex; flex-direction: column; gap: 12px; }
@@ -164,10 +164,11 @@
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 12px 14px;
+      padding: 14px;
       background: var(--bg);
       border: 1px solid var(--border);
       border-radius: 10px;
+      flex-wrap: wrap;
     }
     .resume-type-badge {
       flex-shrink: 0;
@@ -175,7 +176,7 @@
       width: 32px;
       text-align: center;
     }
-    .resume-type-info { flex: 0 0 140px; }
+    .resume-type-info { flex: 0 0 120px; }
     .resume-type-name {
       font-size: 12px;
       font-weight: 700;
@@ -188,6 +189,7 @@
     }
     .resume-name-input {
       flex: 1;
+      min-width: 120px;
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 7px;
@@ -199,6 +201,52 @@
       transition: border-color 0.15s;
     }
     .resume-name-input:focus { border-color: var(--purple); }
+
+    /* ── Resume file upload ── */
+    .resume-file-area {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      margin-top: 8px;
+      padding-left: 44px;
+    }
+    .resume-file-label {
+      font-size: 11px;
+      color: var(--text3);
+      min-width: 60px;
+    }
+    .resume-file-name {
+      font-size: 11px;
+      color: var(--green);
+      flex: 1;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .resume-file-name.no-file {
+      color: var(--text3);
+      font-style: italic;
+    }
+    .resume-file-btn {
+      background: rgba(99,102,241,0.15);
+      color: var(--purple);
+      border: none;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .resume-file-btn:hover { background: rgba(99,102,241,0.25); }
+    .resume-file-btn.delete {
+      background: rgba(239,68,68,0.1);
+      color: var(--red);
+    }
+    .resume-file-btn.delete:hover { background: rgba(239,68,68,0.2); }
+    .resume-file-input { display: none; }
 
     /* ── Detection hint ── */
     .detection-hint {
@@ -246,7 +294,6 @@
     }
     .btn-ghost:hover { background: rgba(255,255,255,0.1); }
 
-    /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -255,7 +302,6 @@
 <body>
 
 <div class="layout">
-  <!-- Sidebar -->
   <aside class="sidebar">
     <div class="sidebar-logo">
       <div class="logo-icon">🎯</div>
@@ -271,14 +317,13 @@
     </nav>
   </aside>
 
-  <!-- Main -->
   <main class="main">
     <div class="page-title">Settings</div>
 
     <!-- Profile card -->
     <div class="card">
       <div class="card-title">Your Profile</div>
-      <div class="card-subtitle">Used to pre-fill applications and personalize the dashboard.</div>
+      <div class="card-subtitle">Used to auto-fill applications — name, email, phone, LinkedIn, and more.</div>
 
       <div class="avatar-row">
         <div class="avatar-preview" id="avatar-preview">RW</div>
@@ -312,69 +357,220 @@
         </div>
         <div class="field full">
           <label class="field-label">Professional Summary</label>
-          <textarea class="field-textarea" id="summary" placeholder="Brief summary for cover letters and outreach…"></textarea>
+          <textarea class="field-textarea" id="summary" placeholder="Brief summary for cover letters and outreach..."></textarea>
         </div>
       </div>
 
       <div class="card-footer">
-        <span class="saved-msg" id="profile-saved">✓ Profile saved</span>
+        <span class="saved-msg" id="profile-saved">&#10003; Profile saved</span>
         <button class="btn btn-primary" id="save-profile">Save Profile</button>
       </div>
     </div>
 
     <!-- Resumes card -->
     <div class="card">
-      <div class="card-title">Resume Names</div>
+      <div class="card-title">Resumes</div>
       <div class="card-subtitle">
-        Name each of your 4 resumes. JobHunter will auto-suggest the right one when you save a job,
-        and you can always override before saving.
+        Name each resume and upload the PDF file. JobHunter auto-selects the right one when you save a job
+        and uploads it when you auto-fill an application.
       </div>
 
       <div class="resume-list">
-        <div class="resume-row">
+        <!-- Cloud -->
+        <div class="resume-row" data-type="cloud">
           <div class="resume-type-badge">☁️</div>
           <div class="resume-type-info">
             <div class="resume-type-name">Cloud &amp; Infrastructure</div>
-            <div class="resume-type-desc">Detected by job title keywords</div>
+            <div class="resume-type-desc">AWS, Azure, DevOps roles</div>
           </div>
-          <input class="resume-name-input" id="resume-cloud" type="text" placeholder="e.g. Randy Walker - Cloud Resume.pdf">
+          <input class="resume-name-input" id="resume-cloud" type="text" placeholder="e.g. Randy Walker - Cloud Resume">
+          <div class="resume-file-area">
+            <span class="resume-file-label">PDF:</span>
+            <span class="resume-file-name no-file" id="file-name-cloud">No file uploaded</span>
+            <input class="resume-file-input" id="file-input-cloud" type="file" accept=".pdf">
+            <button class="resume-file-btn" id="file-btn-cloud">Upload</button>
+            <button class="resume-file-btn delete" id="file-del-cloud" style="display:none">✕</button>
+          </div>
         </div>
-        <div class="resume-row">
+
+        <!-- IT Management -->
+        <div class="resume-row" data-type="it-mgmt">
           <div class="resume-type-badge">💼</div>
           <div class="resume-type-info">
             <div class="resume-type-name">IT Management</div>
             <div class="resume-type-desc">Default for general IT roles</div>
           </div>
-          <input class="resume-name-input" id="resume-it-mgmt" type="text" placeholder="e.g. Randy Walker - IT Mgmt Resume.pdf">
+          <input class="resume-name-input" id="resume-it-mgmt" type="text" placeholder="e.g. Randy Walker - IT Mgmt Resume">
+          <div class="resume-file-area">
+            <span class="resume-file-label">PDF:</span>
+            <span class="resume-file-name no-file" id="file-name-it-mgmt">No file uploaded</span>
+            <input class="resume-file-input" id="file-input-it-mgmt" type="file" accept=".pdf">
+            <button class="resume-file-btn" id="file-btn-it-mgmt">Upload</button>
+            <button class="resume-file-btn delete" id="file-del-it-mgmt" style="display:none">✕</button>
+          </div>
         </div>
-        <div class="resume-row">
+
+        <!-- Executive -->
+        <div class="resume-row" data-type="executive">
           <div class="resume-type-badge">🏆</div>
           <div class="resume-type-info">
             <div class="resume-type-name">Executive</div>
-            <div class="resume-type-desc">VP, CIO, Director-level roles</div>
+            <div class="resume-type-desc">VP, CIO, Director-level</div>
           </div>
-          <input class="resume-name-input" id="resume-executive" type="text" placeholder="e.g. Randy Walker - Executive Resume.pdf">
+          <input class="resume-name-input" id="resume-executive" type="text" placeholder="e.g. Randy Walker - Executive Resume">
+          <div class="resume-file-area">
+            <span class="resume-file-label">PDF:</span>
+            <span class="resume-file-name no-file" id="file-name-executive">No file uploaded</span>
+            <input class="resume-file-input" id="file-input-executive" type="file" accept=".pdf">
+            <button class="resume-file-btn" id="file-btn-executive">Upload</button>
+            <button class="resume-file-btn delete" id="file-del-executive" style="display:none">✕</button>
+          </div>
         </div>
-        <div class="resume-row">
+
+        <!-- Staffing -->
+        <div class="resume-row" data-type="staffing">
           <div class="resume-type-badge">🏢</div>
           <div class="resume-type-info">
             <div class="resume-type-name">Staffing / Contract</div>
             <div class="resume-type-desc">Auto-detected by firm name</div>
           </div>
-          <input class="resume-name-input" id="resume-staffing" type="text" placeholder="e.g. Randy Walker - Contract Resume.pdf">
+          <input class="resume-name-input" id="resume-staffing" type="text" placeholder="e.g. Randy Walker - Contract Resume">
+          <div class="resume-file-area">
+            <span class="resume-file-label">PDF:</span>
+            <span class="resume-file-name no-file" id="file-name-staffing">No file uploaded</span>
+            <input class="resume-file-input" id="file-input-staffing" type="file" accept=".pdf">
+            <button class="resume-file-btn" id="file-btn-staffing">Upload</button>
+            <button class="resume-file-btn delete" id="file-del-staffing" style="display:none">✕</button>
+          </div>
         </div>
       </div>
 
       <div class="detection-hint">
-        <strong>Auto-detection logic:</strong> Executive roles are identified by VP / CIO / Director in the job title.
-        Cloud &amp; Infrastructure roles by keywords like AWS, Azure, DevOps, Kubernetes.
-        Staffing firms (Infosys, Wipro, TCS, Cognizant, HCL, etc.) are matched by company name.
+        <strong>Auto-detection:</strong> Executive roles identified by VP / CIO / Director.
+        Cloud roles by AWS, Azure, DevOps, Kubernetes, etc.
+        Staffing firms (Infosys, Wipro, TCS, etc.) matched by company name.
         Everything else defaults to IT Management.
       </div>
 
       <div class="card-footer">
-        <span class="saved-msg" id="resumes-saved">✓ Resume names saved</span>
+        <span class="saved-msg" id="resumes-saved">&#10003; Resume names saved</span>
         <button class="btn btn-primary" id="save-resumes">Save Resume Names</button>
+      </div>
+    </div>
+
+    <!-- Common Q&A card -->
+    <div class="card">
+      <div class="card-title">Common Application Answers</div>
+      <div class="card-subtitle">
+        Pre-fill answers to frequently asked questions on job applications. These are used by the Auto-Fill feature.
+      </div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label class="field-label">Years of Experience</label>
+          <input class="field-input" id="qa-yearsExperience" type="text" placeholder="e.g. 15+">
+        </div>
+        <div class="field">
+          <label class="field-label">Desired Salary</label>
+          <input class="field-input" id="qa-desiredSalary" type="text" placeholder="e.g. $180,000">
+        </div>
+        <div class="field">
+          <label class="field-label">Work Authorization</label>
+          <input class="field-input" id="qa-workAuthorization" type="text" placeholder="Authorized to work in the US">
+        </div>
+        <div class="field">
+          <label class="field-label">Require Sponsorship?</label>
+          <select class="field-select" id="qa-sponsorship">
+            <option value="No">No</option>
+            <option value="Yes">Yes</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Willing to Relocate?</label>
+          <select class="field-select" id="qa-willingToRelocate">
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Earliest Start Date</label>
+          <input class="field-input" id="qa-startDate" type="text" placeholder="e.g. Immediately, 2 weeks">
+        </div>
+        <div class="field">
+          <label class="field-label">Education Level</label>
+          <input class="field-input" id="qa-educationLevel" type="text" placeholder="e.g. Bachelor's Degree">
+        </div>
+        <div class="field">
+          <label class="field-label">University</label>
+          <input class="field-input" id="qa-university" type="text" placeholder="e.g. University of Texas">
+        </div>
+        <div class="field">
+          <label class="field-label">Graduation Year</label>
+          <input class="field-input" id="qa-graduationYear" type="text" placeholder="e.g. 2005">
+        </div>
+        <div class="field">
+          <label class="field-label">LinkedIn URL</label>
+          <input class="field-input" id="qa-linkedinUrl" type="url" placeholder="https://linkedin.com/in/...">
+        </div>
+        <div class="field">
+          <label class="field-label">GitHub URL</label>
+          <input class="field-input" id="qa-githubUrl" type="url" placeholder="https://github.com/...">
+        </div>
+        <div class="field">
+          <label class="field-label">Website / Portfolio</label>
+          <input class="field-input" id="qa-websiteUrl" type="url" placeholder="https://...">
+        </div>
+      </div>
+
+      <div style="margin-top: 20px;">
+        <div class="card-subtitle" style="margin-bottom: 12px; font-weight: 600; color: var(--text);">
+          EEO / Voluntary Self-Identification
+        </div>
+        <div class="form-grid">
+          <div class="field">
+            <label class="field-label">Veteran Status</label>
+            <select class="field-select" id="qa-veteranStatus">
+              <option value="I do not wish to answer">Decline to answer</option>
+              <option value="I am not a protected veteran">Not a protected veteran</option>
+              <option value="I am a protected veteran">Protected veteran</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label">Disability Status</label>
+            <select class="field-select" id="qa-disabilityStatus">
+              <option value="I do not wish to answer">Decline to answer</option>
+              <option value="No, I do not have a disability">No disability</option>
+              <option value="Yes, I have a disability">Have a disability</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label">Gender</label>
+            <select class="field-select" id="qa-gender">
+              <option value="I do not wish to answer">Decline to answer</option>
+              <option value="Male">Male</option>
+              <option value="Female">Female</option>
+              <option value="Non-binary">Non-binary</option>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label">Ethnicity</label>
+            <select class="field-select" id="qa-ethnicity">
+              <option value="I do not wish to answer">Decline to answer</option>
+              <option value="Asian">Asian</option>
+              <option value="Black or African American">Black or African American</option>
+              <option value="Hispanic or Latino">Hispanic or Latino</option>
+              <option value="White">White</option>
+              <option value="Two or more races">Two or more races</option>
+              <option value="Native American">Native American or Alaska Native</option>
+              <option value="Pacific Islander">Native Hawaiian or Pacific Islander</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-footer">
+        <span class="saved-msg" id="qa-saved">&#10003; Answers saved</span>
+        <button class="btn btn-primary" id="save-qa">Save Answers</button>
       </div>
     </div>
 
