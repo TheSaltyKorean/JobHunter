@@ -88,6 +88,8 @@
   flex: 1;
   overflow-y: auto;
   padding: 0;
+  display: flex;
+  flex-direction: column;
 }
 .jh-sidebar-content::-webkit-scrollbar { width: 4px; }
 .jh-sidebar-content::-webkit-scrollbar-track { background: transparent; }
@@ -233,12 +235,19 @@
 }
 
 /* ── Auto-fill log ──────────────────────────────────────────────────────── */
+#jh-fill-status-section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 .jh-fill-log {
   background: #0a0c10;
   border: 1px solid #1e2130;
   border-radius: 8px;
   padding: 10px 12px;
-  max-height: 180px;
+  flex: 1;
+  min-height: 80px;
   overflow-y: auto;
   font-size: 11px;
   font-family: 'SF Mono', 'Cascadia Code', monospace;

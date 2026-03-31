@@ -425,6 +425,9 @@
       if (el.type === 'file') return; // Handle file inputs separately
       if (el.offsetParent === null && el.type !== 'radio' && el.type !== 'checkbox') return; // hidden
       if (el.readOnly || el.disabled) return;
+      // Skip inputs inside Workday multiselect containers — they're internal;
+      // the multiselect container itself is scanned separately below
+      if (el.closest('[data-uxi-widget-type="multiselect"]')) return;
 
       const label = extractFieldLabel(el);
       const tag   = el.tagName.toLowerCase();
@@ -449,7 +452,25 @@
     document.querySelectorAll('[data-uxi-widget-type="multiselect"]').forEach(container => {
       if (container.closest('#jh-sidebar')) return;
       if (container.offsetParent === null) return;
-      const label = extractFieldLabel(container);
+      let label = extractFieldLabel(container);
+      // Workday multiselect label extraction often returns generic text like "multi Select Container"
+      // Try to find a better label from the parent fieldset/group or nearby label element
+      if (!label || /multi\s*select/i.test(label)) {
+        const fieldset = container.closest('fieldset, [data-automation-id]');
+        if (fieldset) {
+          const legend = fieldset.querySelector('legend label, legend, label');
+          if (legend) label = (legend.innerText || legend.textContent || '').trim();
+        }
+        // Also try looking for a label sibling before this container
+        if (!label || /multi\s*select/i.test(label)) {
+          let prev = container.previousElementSibling;
+          for (let i = 0; i < 3 && prev; i++) {
+            const text = (prev.innerText || prev.textContent || '').trim();
+            if (text && text.length < 60 && !/multi\s*select/i.test(text)) { label = text; break; }
+            prev = prev.previousElementSibling;
+          }
+        }
+      }
       const selected = container.querySelector('[data-automation-id="promptSelectionLabel"]');
       const hasSelections = selected && selected.textContent?.trim().length > 0;
       fields.push({ element: container, label, fieldType: 'workday-multiselect', filled: hasSelections });
