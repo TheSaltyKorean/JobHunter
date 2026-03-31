@@ -445,11 +445,23 @@
       if (btn.closest('#jh-sidebar')) return;
       if (btn.offsetParent === null) return;
       let label = '';
+      // Strategy 0: Closest <fieldset> with a <legend> (Workday application questions)
+      // e.g. <fieldset><legend><div data-automation-id="richText"><p>Are you a resident...</p></div></legend>...button...</fieldset>
+      const fieldset = btn.closest('fieldset');
+      if (fieldset) {
+        const legend = fieldset.querySelector('legend');
+        if (legend) {
+          const t = (legend.innerText || legend.textContent || '').trim();
+          if (t.length > 3 && !/select\s*one/i.test(t)) label = t;
+        }
+      }
       // Strategy 1: Workday formField-* wrapper with a <label> child
-      const formField = btn.closest('[data-automation-id^="formField"]');
-      if (formField) {
-        const lbl = formField.querySelector('label');
-        if (lbl) label = (lbl.innerText || lbl.textContent || '').trim();
+      if (!label || /select\s*one/i.test(label)) {
+        const formField = btn.closest('[data-automation-id^="formField"]');
+        if (formField) {
+          const lbl = formField.querySelector('label');
+          if (lbl) label = (lbl.innerText || lbl.textContent || '').trim();
+        }
       }
       // Strategy 2: aria-label on the button (Workday puts question text here)
       // e.g. "Are you legally authorized... Select One Required"
