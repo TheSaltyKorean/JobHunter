@@ -1141,7 +1141,7 @@
     // Experience field patterns — order matters for "from"/"to" disambiguation
     // Broadened for Workday + other ATS: handle aria-labels, data-automation IDs, etc.
     const expFieldPatterns = {
-      title:       /job.*title|position.*title|^title$|^role$|^position$/i,
+      title:       /job.*title|position.*title|^title$|^role$|position\d*$|\bposition\b/i,
       company:     /company|employer|organization|firm/i,
       location:    /location|city/i,
       startMonth:  /start.*month|from.*month/i,
