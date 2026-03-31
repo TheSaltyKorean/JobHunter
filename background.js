@@ -161,6 +161,57 @@ async function isClaudeServerRunning() {
   }
 }
 
+// ─── Job Context Tracking (persists across tab navigations) ─────────────────
+// When you find a job on LinkedIn and click Apply, the tab navigates to an ATS.
+// We store the job context per tab so the sidebar on the ATS page knows what job
+// you're applying to.
+
+const tabJobContext = new Map(); // tabId → { title, company, location, platform, url, originUrl, jobType }
+
+// Known job board hostnames (where jobs are FOUND)
+const JOB_BOARD_HOSTS = ['linkedin.com', 'indeed.com', 'glassdoor.com', 'ziprecruiter.com', 'dice.com', 'monster.com'];
+
+// URL patterns that indicate an application/ATS site
+const ATS_PATTERNS = [
+  /myworkdayjobs\.com/i, /greenhouse\.io/i, /lever\.co/i, /icims\.com/i,
+  /taleo\.net/i, /brassring\.com/i, /smartrecruiters\.com/i, /jobvite\.com/i,
+  /ashbyhq\.com/i, /bamboohr\.com/i, /recruitee\.com/i, /workable\.com/i,
+  /applicantpro\.com/i, /paylocity\.com/i, /ultipro\.com/i, /adp\.com/i,
+  /successfactors\.com/i, /cornerstoneondemand\.com/i, /avature\.net/i,
+  /phenom\.com/i, /eightfold\.ai/i, /apply/i, /careers?\./i, /jobs?\./i,
+];
+
+function isJobBoard(url) {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    return JOB_BOARD_HOSTS.some(h => host.includes(h));
+  } catch { return false; }
+}
+
+function isATSSite(url) {
+  return ATS_PATTERNS.some(rx => rx.test(url));
+}
+
+function isJobRelatedSite(url) {
+  return isJobBoard(url) || isATSSite(url);
+}
+
+// Clean up when tabs close
+chrome.tabs.onRemoved.addListener(tabId => {
+  tabJobContext.delete(tabId);
+});
+
+// Detect navigation: if tab goes from job board → ATS, carry the context
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete' || !tab.url) return;
+  // If this tab has stored context and the new URL is an ATS site,
+  // the content script will pick it up via GET_JOB_CONTEXT
+  const ctx = tabJobContext.get(tabId);
+  if (ctx) {
+    console.log(`JobHunter: Tab ${tabId} navigated to ${tab.url}, job context available: ${ctx.title}`);
+  }
+});
+
 // ─── Job Type Detection ─────────────────────────────────────────────────────
 
 const STAFFING_FIRMS = [
@@ -443,6 +494,40 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const running = await isClaudeServerRunning();
       sendResponse({ running });
     })();
+    return true;
+  }
+
+  // ── Store job context for a tab (from content script on LinkedIn/Indeed) ──
+  if (msg.type === 'SET_JOB_CONTEXT') {
+    const tabId = _sender.tab?.id;
+    if (tabId && msg.job) {
+      tabJobContext.set(tabId, {
+        ...msg.job,
+        originUrl: _sender.tab.url,
+        storedAt: Date.now(),
+      });
+      console.log(`JobHunter: Stored job context for tab ${tabId}: ${msg.job.title}`);
+    }
+    sendResponse({ ok: true });
+    return true;
+  }
+
+  // ── Get job context for current tab ──────────────────────────────────────
+  if (msg.type === 'GET_JOB_CONTEXT') {
+    const tabId = _sender.tab?.id;
+    const ctx = tabId ? tabJobContext.get(tabId) : null;
+    sendResponse(ctx || null);
+    return true;
+  }
+
+  // ── Check if current URL is a known job-related site ─────────────────────
+  if (msg.type === 'IS_JOB_SITE') {
+    const url = msg.url || '';
+    sendResponse({
+      isJobBoard: isJobBoard(url),
+      isATS: isATSSite(url),
+      isJobRelated: isJobRelatedSite(url),
+    });
     return true;
   }
 

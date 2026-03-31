@@ -7,6 +7,9 @@
 
   console.log('JobHunter: content script loaded on', location.href);
 
+  // Skip chrome:// and extension pages
+  if (location.protocol === 'chrome:' || location.protocol === 'chrome-extension:') return;
+
   const JOB_TYPE_LABELS = {
     'cloud':     '☁️ Cloud & Infra',
     'it-mgmt':   '💼 IT Mgmt',
@@ -509,7 +512,7 @@
       }
     } else if (unknownFields.length > 0) {
       for (const field of unknownFields) {
-        logFill(log, `⚠ ${field.label} — no match (add Claude API key for smart fill)`, 'warn');
+        logFill(log, `⚠ ${field.label} — no match (start Claude CLI server for smart fill)`, 'warn');
       }
     }
 
@@ -534,7 +537,7 @@
   }
 
   // ── Main init ──────────────────────────────────────────────────────────────
-  let sidebarVisible = true;
+  let sidebarVisible = false;
 
   function init() {
     if (document.getElementById('jh-sidebar')) return;
@@ -669,15 +672,64 @@
       chrome.runtime.sendMessage({ type: 'OPEN_SETTINGS' });
     });
 
-    // Initial scan
-    setTimeout(scanPage, 500);
+    // ── Smart auto-show: ask background if this is a job-related site ────────
+    // Start collapsed by default; expand only on job boards & ATS sites
+    collapseSidebar();
 
-    // Push main content to the left to make room
-    expandSidebar();
+    chrome.runtime.sendMessage({ type: 'IS_JOB_SITE', url: location.href }, siteInfo => {
+      if (!siteInfo) return;
 
-    // Check saved preference
+      if (siteInfo.isJobBoard) {
+        // On a job board (LinkedIn, Indeed, etc.) — expand sidebar and scan
+        console.log('JobHunter: Job board detected, expanding sidebar');
+        expandSidebar();
+        setTimeout(() => {
+          scanPage();
+          // Store job context so it carries over if user clicks Apply → ATS
+          setTimeout(() => {
+            if (currentJob && currentJob.title) {
+              chrome.runtime.sendMessage({
+                type: 'SET_JOB_CONTEXT',
+                job: { ...currentJob, jobType: currentJobType },
+              });
+              console.log('JobHunter: Stored job context:', currentJob.title);
+            }
+          }, 600);
+        }, 500);
+      } else if (siteInfo.isATS) {
+        // On an ATS site (Workday, Greenhouse, etc.) — check for carried-over context
+        console.log('JobHunter: ATS site detected, checking for job context');
+        expandSidebar();
+        chrome.runtime.sendMessage({ type: 'GET_JOB_CONTEXT' }, ctx => {
+          if (ctx && ctx.title) {
+            console.log('JobHunter: Found carried-over job context:', ctx.title);
+            document.getElementById('jh-job-title').textContent   = ctx.title;
+            document.getElementById('jh-job-company').textContent  = ctx.company || '';
+            document.getElementById('jh-job-location').textContent = ctx.location || '';
+            document.getElementById('jh-job-platform').textContent = `${ctx.platform || ''} → ${location.hostname}`;
+            currentJob = ctx;
+            if (ctx.jobType) {
+              currentJobType = ctx.jobType;
+              document.getElementById('jh-jobtype').value = ctx.jobType;
+              updateResumeFileDisplay();
+            }
+          } else {
+            // No context — scan the ATS page itself
+            setTimeout(scanPage, 500);
+          }
+        });
+      } else if (siteInfo.isJobRelated) {
+        // Job-related but not specifically a board or ATS — show but collapsed
+        setTimeout(scanPage, 500);
+      } else {
+        // Not a job site — stay collapsed, still scan in background
+        setTimeout(scanPage, 500);
+      }
+    });
+
+    // Check saved preference (override auto-show if user explicitly collapsed)
     chrome.storage.local.get(['sidebarCollapsed'], r => {
-      if (r.sidebarCollapsed) collapseSidebar();
+      if (r.sidebarCollapsed && sidebarVisible) collapseSidebar();
     });
   }
 
@@ -713,6 +765,16 @@
                 document.getElementById('jh-jobtype').value = resp.jobType || 'it-mgmt';
               }
             );
+
+            // Update job context on job boards during SPA navigation
+            chrome.runtime.sendMessage({ type: 'IS_JOB_SITE', url: location.href }, siteInfo => {
+              if (siteInfo?.isJobBoard && job.title) {
+                chrome.runtime.sendMessage({
+                  type: 'SET_JOB_CONTEXT',
+                  job: { ...job, jobType: document.getElementById('jh-jobtype')?.value || 'it-mgmt' },
+                });
+              }
+            });
           }, 800);
         } else {
           init();
