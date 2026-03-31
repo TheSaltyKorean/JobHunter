@@ -444,6 +444,9 @@
     document.querySelectorAll('button[aria-haspopup="listbox"]').forEach(btn => {
       if (btn.closest('#jh-sidebar')) return;
       if (btn.offsetParent === null) return;
+      // Skip Workday utility/navigation buttons (settings gear, etc.)
+      const autoId = btn.getAttribute('data-automation-id') || '';
+      if (/utility|settings|navigation|header/i.test(autoId)) return;
       let label = '';
       // Strategy 0: Closest <fieldset> with a <legend> (Workday application questions)
       // e.g. <fieldset><legend><div data-automation-id="richText"><p>Are you a resident...</p></div></legend>...button...</fieldset>
@@ -691,49 +694,79 @@
 
   // ── Fill Workday custom listbox (button[aria-haspopup="listbox"]) ──────────
   // Clicks the button to open the listbox, finds the matching option, clicks it
-  function fillWorkdayListbox(btn, value) {
+  async function fillWorkdayListbox(btn, value) {
     const lower = value.toLowerCase().trim();
     // Build a list of candidate values to try matching:
     // 1. Exact value, 2. Yes/No normalization for affirmative/negative answers
+    // 3. "decline"/"do not wish" for EEO fields
     const candidates = [lower];
     const affirmative = /\b(yes|authorized|eligible|permit|allow|can|will|do)\b/i.test(value);
     const negative    = /\b(no\b|not\b|unable|cannot|can't|won't|don't|decline|deny)/i.test(value);
     if (affirmative && !negative) candidates.push('yes');
     if (negative && !affirmative) candidates.push('no');
+    if (/do not wish|don't wish|decline|prefer not/i.test(value)) {
+      candidates.push('i do not wish to answer');
+      candidates.push("i don't wish to answer");
+      candidates.push('decline to self identify');
+      candidates.push('decline to self-identify');
+    }
 
-    // Click to open the dropdown listbox
-    btn.click();
-    // Wait a tick for the listbox to render, then find and click the option
-    return new Promise(resolve => {
-      setTimeout(() => {
-        // Workday renders a [role="listbox"] with [role="option"] children
-        const listboxes = document.querySelectorAll('[role="listbox"]');
-        for (const listbox of listboxes) {
-          const options = listbox.querySelectorAll('[role="option"]');
-          // Try each candidate value in order of preference
-          for (const candidate of candidates) {
-            let best = null;
-            let bestScore = 0;
-            for (const opt of options) {
-              const text = (opt.textContent || '').trim().toLowerCase();
-              if (text === candidate) { best = opt; bestScore = 1000; break; }
-              if (text.includes(candidate) || candidate.includes(text)) {
-                const score = Math.min(text.length, candidate.length) / Math.max(text.length, candidate.length);
-                if (score > bestScore) { best = opt; bestScore = score; }
-              }
-            }
-            if (best && bestScore > 0.3) {
-              best.click();
-              resolve(true);
-              return;
-            }
+    // Click to open the dropdown listbox — use full mouse event sequence for React
+    btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    btn.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    // Wait for the listbox to render — Workday can be slow
+    await new Promise(r => setTimeout(r, 500));
+
+    // Workday renders a [role="listbox"] with [role="option"] children
+    const listboxes = document.querySelectorAll('[role="listbox"]');
+    for (const listbox of listboxes) {
+      const rect = listbox.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) continue; // skip hidden
+      const options = listbox.querySelectorAll('[role="option"]');
+      if (options.length === 0) continue;
+
+      // Try each candidate value in order of preference
+      for (const candidate of candidates) {
+        let best = null;
+        let bestScore = 0;
+        for (const opt of options) {
+          const text = (opt.textContent || '').trim().toLowerCase();
+          if (text === candidate) { best = opt; bestScore = 1000; break; }
+          if (text.includes(candidate) || candidate.includes(text)) {
+            const score = Math.min(text.length, candidate.length) / Math.max(text.length, candidate.length);
+            if (score > bestScore) { best = opt; bestScore = score; }
           }
         }
-        // If no listbox found, try closing the dropdown
-        btn.click();
-        resolve(false);
-      }, 300);
-    });
+        if (best && bestScore > 0.3) {
+          best.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          best.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          best.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          return true;
+        }
+      }
+
+      // Word-overlap fallback: pick option that shares the most words with value
+      const valueWords = lower.split(/\s+/).filter(w => w.length > 2);
+      let wordBest = null;
+      let wordBestCount = 0;
+      for (const opt of options) {
+        const text = (opt.textContent || '').trim().toLowerCase();
+        const count = valueWords.filter(w => text.includes(w)).length;
+        if (count > wordBestCount) { wordBestCount = count; wordBest = opt; }
+      }
+      if (wordBest && wordBestCount >= 2) {
+        wordBest.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        wordBest.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        wordBest.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        return true;
+      }
+    }
+
+    // Close dropdown if nothing matched
+    btn.click();
+    return false;
   }
 
   // ── Fill Workday multi-select typeahead ────────────────────────────────────
