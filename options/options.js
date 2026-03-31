@@ -50,7 +50,7 @@ function loadSettings() {
     updateAvatar(p.name || '');
   });
 
-  // Load resume file info
+  // Load resume file status
   loadResumeFiles();
 }
 
@@ -63,21 +63,23 @@ function updateAvatar(name) {
     : (parts[0]?.[0] || '?').toUpperCase();
 }
 
-// ── Resume file management ───────────────────────────────────────────────────
+// ── Resume file detection (reads from resumes/ folder) ──────────────────────
 function loadResumeFiles() {
   chrome.runtime.sendMessage({ type: 'GET_RESUME_FILES_INFO' }, info => {
-    if (!info) return;
+    if (!info) info = {};
     for (const type of RESUME_TYPES) {
-      const nameEl = document.getElementById(`file-name-${type}`);
-      const delBtn = document.getElementById(`file-del-${type}`);
+      const nameEl   = document.getElementById(`file-name-${type}`);
+      const statusEl = document.getElementById(`file-status-${type}`);
       if (info[type]) {
-        nameEl.textContent = `${info[type].name} (${formatSize(info[type].size)})`;
+        nameEl.textContent = `${type}.pdf (${formatSize(info[type].size)})`;
         nameEl.classList.remove('no-file');
-        delBtn.style.display = '';
+        statusEl.textContent = 'Found';
+        statusEl.className = 'resume-file-status found';
       } else {
-        nameEl.textContent = 'No file uploaded';
+        nameEl.textContent = `${type}.pdf not found in resumes/ folder`;
         nameEl.classList.add('no-file');
-        delBtn.style.display = 'none';
+        statusEl.textContent = 'Missing';
+        statusEl.className = 'resume-file-status missing';
       }
     }
   });
@@ -87,60 +89,6 @@ function formatSize(bytes) {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-}
-
-// Wire up upload buttons
-for (const type of RESUME_TYPES) {
-  const uploadBtn = document.getElementById(`file-btn-${type}`);
-  const fileInput = document.getElementById(`file-input-${type}`);
-  const deleteBtn = document.getElementById(`file-del-${type}`);
-
-  uploadBtn.addEventListener('click', () => fileInput.click());
-
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files[0];
-    if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      alert('Please upload a PDF file.');
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      alert('File too large. Maximum size is 5 MB.');
-      return;
-    }
-
-    uploadBtn.textContent = 'Uploading...';
-    uploadBtn.disabled = true;
-
-    // Read file as base64
-    const reader = new FileReader();
-    reader.onload = () => {
-      const base64 = reader.result.split(',')[1]; // strip data:...;base64, prefix
-      chrome.runtime.sendMessage({
-        type: 'SAVE_RESUME_FILE',
-        resumeType: type,
-        fileName:   file.name,
-        fileSize:   file.size,
-        fileData:   base64,
-      }, resp => {
-        uploadBtn.textContent = 'Upload';
-        uploadBtn.disabled = false;
-        if (resp?.ok) {
-          loadResumeFiles();
-          showSaved('resumes-saved');
-        } else {
-          alert('Upload failed. Try again.');
-        }
-      });
-    };
-    reader.readAsDataURL(file);
-  });
-
-  deleteBtn.addEventListener('click', () => {
-    chrome.runtime.sendMessage({ type: 'DELETE_RESUME_FILE', resumeType: type }, () => {
-      loadResumeFiles();
-    });
-  });
 }
 
 // ── Custom Q&A pair management ───────────────────────────────────────────

@@ -220,12 +220,36 @@ async function getQAAnswers() {
   });
 }
 
+// Resume files are stored as actual PDFs in the resumes/ folder
+// Filenames: cloud.pdf, it-mgmt.pdf, executive.pdf, staffing.pdf
 async function getResumeFile(type) {
-  return new Promise(resolve => {
-    chrome.storage.local.get([`resumeFile_${type}`], r => {
-      resolve(r[`resumeFile_${type}`] || null);
-    });
-  });
+  const url = chrome.runtime.getURL(`resumes/${type}.pdf`);
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    const blob = await resp.blob();
+    if (blob.size === 0) return null;
+    return {
+      name: `${type}.pdf`,
+      size: blob.size,
+      url:  url,
+      mimeType: 'application/pdf',
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
+// Also provide the raw blob for auto-fill upload
+async function getResumeBlob(type) {
+  const url = chrome.runtime.getURL(`resumes/${type}.pdf`);
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) return null;
+    return await resp.blob();
+  } catch (e) {
+    return null;
+  }
 }
 
 // ─── Message Handler ────────────────────────────────────────────────────────
@@ -285,7 +309,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // ── Get resume file (base64 PDF) ──────────────────────────────────────────
+  // ── Get resume file info ───────────────────────────────────────────────────
   if (msg.type === 'GET_RESUME_FILE') {
     (async () => {
       const file = await getResumeFile(msg.resumeType);
@@ -294,47 +318,33 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // ── Save resume file (base64 PDF) ─────────────────────────────────────────
-  if (msg.type === 'SAVE_RESUME_FILE') {
-    const key = `resumeFile_${msg.resumeType}`;
-    const data = {
-      name:     msg.fileName,
-      size:     msg.fileSize,
-      data:     msg.fileData,    // base64 string
-      mimeType: 'application/pdf',
-      savedAt:  Date.now(),
-    };
-    chrome.storage.local.set({ [key]: data }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('Resume save error:', chrome.runtime.lastError.message);
-        sendResponse({ ok: false, error: chrome.runtime.lastError.message });
-      } else {
-        sendResponse({ ok: true });
-      }
-    });
+  // ── Get resume blob as base64 (for content script to create File object) ──
+  if (msg.type === 'GET_RESUME_BLOB') {
+    (async () => {
+      const blob = await getResumeBlob(msg.resumeType);
+      if (!blob) { sendResponse(null); return; }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64 = reader.result.split(',')[1];
+        sendResponse({ data: base64, name: `${msg.resumeType}.pdf`, size: blob.size });
+      };
+      reader.readAsDataURL(blob);
+    })();
     return true;
   }
 
-  // ── Delete resume file ────────────────────────────────────────────────────
-  if (msg.type === 'DELETE_RESUME_FILE') {
-    chrome.storage.local.remove(`resumeFile_${msg.resumeType}`, () => {
-      sendResponse({ ok: true });
-    });
-    return true;
-  }
-
-  // ── Get all resume file info (not data — just metadata) ───────────────────
+  // ── Get all resume file info (checks which PDFs exist in resumes/) ────────
   if (msg.type === 'GET_RESUME_FILES_INFO') {
-    chrome.storage.local.get(null, r => {
+    (async () => {
       const info = {};
       for (const type of ['cloud', 'it-mgmt', 'executive', 'staffing']) {
-        const file = r[`resumeFile_${type}`];
+        const file = await getResumeFile(type);
         if (file) {
-          info[type] = { name: file.name, size: file.size, savedAt: file.savedAt };
+          info[type] = { name: file.name, size: file.size };
         }
       }
       sendResponse(info);
-    });
+    })();
     return true;
   }
 
@@ -358,15 +368,32 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     return true;
   }
 
-  // ── Get auto-fill data bundle (profile + Q&A + resume file) ───────────────
+  // ── Get auto-fill data bundle (profile + Q&A + resume blob) ───────────────
   if (msg.type === 'GET_AUTOFILL_DATA') {
     (async () => {
-      const profile     = await getProfile();
-      const qa          = await getQAAnswers();
-      const resumeNames = await getResumeNames();
-      const resumeFile  = await getResumeFile(msg.resumeType || 'it-mgmt');
-      const customQA    = await getCustomQA();
+      const profile      = await getProfile();
+      const qa           = await getQAAnswers();
+      const resumeNames  = await getResumeNames();
+      const customQA     = await getCustomQA();
       const claudeApiKey = await getClaudeApiKey();
+
+      // Get resume as base64 blob for the content script to use
+      let resumeFile = null;
+      const blob = await getResumeBlob(msg.resumeType || 'it-mgmt');
+      if (blob) {
+        resumeFile = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            resolve({
+              data: reader.result.split(',')[1],
+              name: `${msg.resumeType || 'it-mgmt'}.pdf`,
+              size: blob.size,
+            });
+          };
+          reader.readAsDataURL(blob);
+        });
+      }
+
       sendResponse({ profile, qa, resumeNames, resumeFile, customQA, hasClaudeKey: !!claudeApiKey });
     })();
     return true;

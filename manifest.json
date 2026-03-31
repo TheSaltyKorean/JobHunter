@@ -95,7 +95,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["dashboard/dashboard.html"],
+      "resources": ["dashboard/dashboard.html", "resumes/*.pdf"],
       "matches": ["<all_urls>"]
     }
   ]

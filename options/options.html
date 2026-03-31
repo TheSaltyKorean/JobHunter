@@ -202,7 +202,7 @@
     }
     .resume-name-input:focus { border-color: var(--purple); }
 
-    /* ── Resume file upload ── */
+    /* ── Resume file status ── */
     .resume-file-area {
       display: flex;
       align-items: center;
@@ -225,28 +225,23 @@
       text-overflow: ellipsis;
     }
     .resume-file-name.no-file {
-      color: var(--text3);
+      color: var(--red);
       font-style: italic;
     }
-    .resume-file-btn {
-      background: rgba(99,102,241,0.15);
-      color: var(--purple);
-      border: none;
-      border-radius: 6px;
-      font-size: 11px;
+    .resume-file-status {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 4px;
       font-weight: 600;
-      padding: 4px 10px;
-      cursor: pointer;
-      transition: background 0.15s;
-      white-space: nowrap;
     }
-    .resume-file-btn:hover { background: rgba(99,102,241,0.25); }
-    .resume-file-btn.delete {
+    .resume-file-status.found {
+      background: rgba(16,185,129,0.15);
+      color: var(--green);
+    }
+    .resume-file-status.missing {
       background: rgba(239,68,68,0.1);
       color: var(--red);
     }
-    .resume-file-btn.delete:hover { background: rgba(239,68,68,0.2); }
-    .resume-file-input { display: none; }
 
     /* ── Detection hint ── */
     .detection-hint {
@@ -413,10 +408,8 @@
           <input class="resume-name-input" id="resume-cloud" type="text" placeholder="e.g. Randy Walker - Cloud Resume">
           <div class="resume-file-area">
             <span class="resume-file-label">PDF:</span>
-            <span class="resume-file-name no-file" id="file-name-cloud">No file uploaded</span>
-            <input class="resume-file-input" id="file-input-cloud" type="file" accept=".pdf">
-            <button class="resume-file-btn" id="file-btn-cloud">Upload</button>
-            <button class="resume-file-btn delete" id="file-del-cloud" style="display:none">✕</button>
+            <span class="resume-file-name no-file" id="file-name-cloud">Checking...</span>
+            <span class="resume-file-status" id="file-status-cloud"></span>
           </div>
         </div>
 
@@ -430,10 +423,8 @@
           <input class="resume-name-input" id="resume-it-mgmt" type="text" placeholder="e.g. Randy Walker - IT Mgmt Resume">
           <div class="resume-file-area">
             <span class="resume-file-label">PDF:</span>
-            <span class="resume-file-name no-file" id="file-name-it-mgmt">No file uploaded</span>
-            <input class="resume-file-input" id="file-input-it-mgmt" type="file" accept=".pdf">
-            <button class="resume-file-btn" id="file-btn-it-mgmt">Upload</button>
-            <button class="resume-file-btn delete" id="file-del-it-mgmt" style="display:none">✕</button>
+            <span class="resume-file-name no-file" id="file-name-it-mgmt">Checking...</span>
+            <span class="resume-file-status" id="file-status-it-mgmt"></span>
           </div>
         </div>
 
@@ -447,10 +438,8 @@
           <input class="resume-name-input" id="resume-executive" type="text" placeholder="e.g. Randy Walker - Executive Resume">
           <div class="resume-file-area">
             <span class="resume-file-label">PDF:</span>
-            <span class="resume-file-name no-file" id="file-name-executive">No file uploaded</span>
-            <input class="resume-file-input" id="file-input-executive" type="file" accept=".pdf">
-            <button class="resume-file-btn" id="file-btn-executive">Upload</button>
-            <button class="resume-file-btn delete" id="file-del-executive" style="display:none">✕</button>
+            <span class="resume-file-name no-file" id="file-name-executive">Checking...</span>
+            <span class="resume-file-status" id="file-status-executive"></span>
           </div>
         </div>
 
@@ -464,15 +453,16 @@
           <input class="resume-name-input" id="resume-staffing" type="text" placeholder="e.g. Randy Walker - Contract Resume">
           <div class="resume-file-area">
             <span class="resume-file-label">PDF:</span>
-            <span class="resume-file-name no-file" id="file-name-staffing">No file uploaded</span>
-            <input class="resume-file-input" id="file-input-staffing" type="file" accept=".pdf">
-            <button class="resume-file-btn" id="file-btn-staffing">Upload</button>
-            <button class="resume-file-btn delete" id="file-del-staffing" style="display:none">✕</button>
+            <span class="resume-file-name no-file" id="file-name-staffing">Checking...</span>
+            <span class="resume-file-status" id="file-status-staffing"></span>
           </div>
         </div>
       </div>
 
       <div class="detection-hint">
+        <strong>Resume files:</strong> Place your PDF files in the extension's <code>resumes/</code> folder as:
+        <code>cloud.pdf</code>, <code>it-mgmt.pdf</code>, <code>executive.pdf</code>, <code>staffing.pdf</code>.
+        <br><br>
         <strong>Auto-detection:</strong> Executive roles identified by VP / CIO / Director.
         Cloud roles by AWS, Azure, DevOps, Kubernetes, etc.
         Staffing firms (Infosys, Wipro, TCS, etc.) matched by company name.
