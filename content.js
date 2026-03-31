@@ -657,39 +657,42 @@
 
     if (searchInput) {
       searchInput.focus();
-      // Simulate typing character by character for Workday's React event handling
-      const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      for (let i = 1; i <= value.length; i++) {
-        const partial = value.substring(0, i);
-        if (nativeSet) nativeSet.call(searchInput, partial);
-        else searchInput.value = partial;
-        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-        searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: value[i-1], bubbles: true }));
-        searchInput.dispatchEvent(new KeyboardEvent('keyup', { key: value[i-1], bubbles: true }));
-      }
-      searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise(r => setTimeout(r, 100));
+      // Use execCommand to type — this triggers React's synthetic event system
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, value);
+      // Also fire input event as backup
+      searchInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
-    // Wait for suggestions to appear
-    await new Promise(r => setTimeout(r, 1000));
+    // Wait for suggestions dropdown to populate
+    await new Promise(r => setTimeout(r, 1500));
 
     // Find and click the first matching option in any visible listbox
+    // Workday may render the listbox in a portal outside the container, so search whole page
     const listboxes = document.querySelectorAll('[role="listbox"]');
     const lower = value.toLowerCase();
     for (const listbox of listboxes) {
-      if (listbox.offsetParent === null) continue; // skip hidden
+      // Check visibility: either offsetParent or getBoundingClientRect
+      const rect = listbox.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) continue; // skip hidden
       const options = listbox.querySelectorAll('[role="option"]');
       for (const opt of options) {
         const text = (opt.textContent || '').trim().toLowerCase();
         if (text.includes(lower) || lower.includes(text)) {
-          opt.click();
+          // Use full mouse event sequence for React compatibility
+          opt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          opt.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          opt.dispatchEvent(new MouseEvent('click', { bubbles: true }));
           return true;
         }
       }
     }
 
-    // Fallback: try pressing Enter to select first suggestion
+    // Fallback: ArrowDown to highlight first suggestion, then Enter to select
     if (searchInput) {
+      searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', keyCode: 40, bubbles: true }));
+      await new Promise(r => setTimeout(r, 200));
       searchInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
     }
     return false;
@@ -891,40 +894,30 @@
     };
 
     // ── Workday-specific date filler ──
-    // Workday uses custom spinbutton date inputs with data-automation-id
-    // Standard fillField doesn't work — must set aria-valuenow/aria-valuetext
-    // Set a Workday spinbutton value WITHOUT triggering events (silent)
-    function setSpinbuttonValue(input, numericValue) {
-      const val = String(numericValue);
-      const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      if (nativeSet) nativeSet.call(input, val);
-      else input.value = val;
+    // Workday spinbuttons are React controlled components — DOM value changes
+    // are ignored. We must use execCommand('insertText') to trigger React's
+    // synthetic event system, or simulate keyboard input the way a real user would.
+    function typeIntoSpinbutton(input, value) {
+      const val = String(value);
+      input.focus();
+      // Select all existing content and replace it
+      input.select();
+      document.execCommand('selectAll', false, null);
+      document.execCommand('insertText', false, val);
+      // Also update aria attributes for accessibility
       input.setAttribute('aria-valuenow', val);
       input.setAttribute('aria-valuetext', val);
-      // Also update the display div (sibling with -display suffix)
-      const displayId = input.id?.replace('-input', '-display');
-      if (displayId) {
-        const display = document.getElementById(displayId);
-        if (display) display.textContent = val.padStart(2, '0');
-      }
     }
 
-    // Trigger events on a spinbutton AFTER value is set
-    function triggerSpinbuttonEvents(input) {
-      input.focus();
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      input.dispatchEvent(new Event('change', { bubbles: true }));
-      input.dispatchEvent(new Event('blur', { bubbles: true }));
-      input.blur();
-    }
-
-    function fillWorkdayDates(exp) {
+    async function fillWorkdayDates(exp, handledSet) {
+      handledSet = handledSet || experienceHandledElements;
       // Find all date wrappers with data-automation-id="dateInputWrapper"
       const wrappers = document.querySelectorAll('[data-automation-id="dateInputWrapper"]');
       let filled = 0;
       for (const wrapper of wrappers) {
         // Skip if already handled
         if (experienceHandledElements.has(wrapper)) continue;
+        if (educationHandledElements.has(wrapper)) continue;
         // Determine if this is a "From" or "To" date by checking the parent fieldset legend
         const fieldset = wrapper.closest('fieldset');
         if (!fieldset) continue;
@@ -939,9 +932,9 @@
         const yearInput  = wrapper.querySelector('[data-automation-id="dateSectionYear-input"]');
         if (!monthInput && !yearInput) continue;
 
-        experienceHandledElements.add(wrapper);
-        if (monthInput) experienceHandledElements.add(monthInput);
-        if (yearInput)  experienceHandledElements.add(yearInput);
+        handledSet.add(wrapper);
+        if (monthInput) handledSet.add(monthInput);
+        if (yearInput)  handledSet.add(yearInput);
 
         let month, year;
         if (isFrom) {
@@ -953,23 +946,20 @@
           year  = exp.endYear;
         }
 
-        // CRITICAL: Set BOTH values silently FIRST, then trigger events
-        // This prevents Workday from validating month when year is still empty
+        // Type year FIRST so when month triggers validation, year is already set
         if (yearInput && year) {
-          setSpinbuttonValue(yearInput, parseInt(year));
-        }
-        if (monthInput && month) {
-          setSpinbuttonValue(monthInput, parseInt(month));
-        }
-
-        // NOW trigger events — year first so validation sees complete date
-        if (yearInput && year) {
-          triggerSpinbuttonEvents(yearInput);
+          typeIntoSpinbutton(yearInput, parseInt(year));
+          await new Promise(r => setTimeout(r, 100));
+          yearInput.blur();
           logFill(log, `✓ Experience: ${isFrom ? 'From' : 'To'} Year → ${year}`, 'success');
           filled++;
         }
+        // Small pause to let Workday process the year
+        await new Promise(r => setTimeout(r, 200));
         if (monthInput && month) {
-          triggerSpinbuttonEvents(monthInput);
+          typeIntoSpinbutton(monthInput, parseInt(month));
+          await new Promise(r => setTimeout(r, 100));
+          monthInput.blur();
           logFill(log, `✓ Experience: ${isFrom ? 'From' : 'To'} Month → ${month}`, 'success');
           filled++;
         }
@@ -1191,7 +1181,7 @@
 
     // Fill first entry from existing fields
     // Workday-specific: fill spinbutton dates FIRST so fillOneEntry can skip them
-    filled += fillWorkdayDates(workExperience[0]);
+    filled += await fillWorkdayDates(workExperience[0]);
     const firstFilled = await fillOneEntry(workExperience[0]);
     filled += firstFilled;
 
@@ -1204,7 +1194,7 @@
       // Wait for new empty fields to appear in the DOM after clicking Add Another
       await new Promise(resolve => setTimeout(resolve, 800));
       // Workday-specific: fill spinbutton dates FIRST
-      filled += fillWorkdayDates(workExperience[i]);
+      filled += await fillWorkdayDates(workExperience[i]);
       const entryFilled = await fillOneEntry(workExperience[i]);
       if (entryFilled === 0 && filled === 0) {
         logFill(log, `No fields found for experience entry ${i + 1}`, 'warn');
@@ -1299,6 +1289,8 @@
       return false;
     }
 
+    // Workday-specific: fill spinbutton dates FIRST for education too
+    filled += await fillWorkdayDates(educationData[0], educationHandledElements);
     const firstFilled = await fillOneEduEntry(educationData[0]);
     filled += firstFilled;
 
@@ -1308,6 +1300,7 @@
         break;
       }
       await new Promise(resolve => setTimeout(resolve, 800));
+      filled += await fillWorkdayDates(educationData[i], educationHandledElements);
       const entryFilled = await fillOneEduEntry(educationData[i]);
       filled += entryFilled;
       if (entryFilled === 0) break;
