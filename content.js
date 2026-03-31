@@ -683,17 +683,30 @@
 
     let filled = 0;
 
-    // Build a MM/YYYY date value from month + year, respecting input type
+    // Build a date value from month + year, respecting input type and placeholder
     function buildDateValue(month, year, inputEl) {
-      if (!month || !year) return '';
-      const mm = String(month).padStart(2, '0');
+      if (!year) return '';
+      const mm = month ? String(month).padStart(2, '0') : '';
       const type = (inputEl?.type || '').toLowerCase();
+      const placeholder = (inputEl?.placeholder || '').toLowerCase();
+
       // HTML month input expects YYYY-MM
-      if (type === 'month') return `${year}-${mm}`;
+      if (type === 'month') {
+        return mm ? `${year}-${mm}` : '';
+      }
       // HTML date input expects YYYY-MM-DD
-      if (type === 'date') return `${year}-${mm}-01`;
-      // Most ATS text fields expect MM/YYYY
-      return `${mm}/${year}`;
+      if (type === 'date') {
+        return mm ? `${year}-${mm}-01` : '';
+      }
+      // Check placeholder for format hints
+      if (placeholder.includes('mm/yyyy') || placeholder.includes('mm/yy')) {
+        return mm ? `${mm}/${year}` : '';
+      }
+      if (placeholder.includes('yyyy-mm')) {
+        return mm ? `${year}-${mm}` : '';
+      }
+      // Default: MM/YYYY for text inputs
+      return mm ? `${mm}/${year}` : '';
     }
 
     // Experience field patterns — order matters for "from"/"to" disambiguation
@@ -858,6 +871,10 @@
     const fields = scanFormFields();
     logFill(log, `Found ${fields.length} fillable fields`, 'info');
 
+    // Labels that are handled by fillExperience — skip them in the main loop
+    // so they never get sent to Claude
+    const EXP_FIELD_SKIP = /^(from|to|job\s*title|company|employer|role\s*description|responsibilities|start|end|i currently work)\s*\*?$/i;
+
     // Track what we've already filled (by radio group name, etc.)
     const filledGroups = new Set();
     const unknownFields = [];
@@ -869,6 +886,9 @@
       if (field.fieldType === 'radio' && filledGroups.has(field.element.name)) continue;
 
       const label = field.label;
+
+      // Skip fields that are handled by the experience filler
+      if (EXP_FIELD_SKIP.test(label.trim())) { skipped++; continue; }
 
       // A. Check custom Q&A first (user-defined exact/fuzzy matches)
       let matchedCustom = false;
