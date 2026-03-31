@@ -702,31 +702,36 @@
 
   // Build a date value from month + year, respecting input type and placeholder
   function buildDateValue(month, year, inputEl) {
-    if (!year) return '';
-    const mm = month ? String(month).padStart(2, '0') : '';
+    const yr = String(year || '').trim();
+    const mo = String(month || '').trim();
+    const mm = mo ? mo.padStart(2, '0') : '';
+
+    // NEVER produce partial dates — must have at least a year
+    if (!yr || yr.length < 4) return '';
+
     const type = (inputEl?.type || '').toLowerCase();
     const placeholder = (inputEl?.placeholder || '').toLowerCase();
 
     // HTML month input expects YYYY-MM
     if (type === 'month') {
-      return mm ? `${year}-${mm}` : '';
+      return mm ? `${yr}-${mm}` : '';
     }
     // HTML date input expects YYYY-MM-DD
     if (type === 'date') {
-      return mm ? `${year}-${mm}-01` : '';
+      return mm ? `${yr}-${mm}-01` : '';
     }
     // Check placeholder for format hints
     if (placeholder.includes('mm/yyyy') || placeholder.includes('mm/yy')) {
-      return mm ? `${mm}/${year}` : '';
+      return mm ? `${mm}/${yr}` : '';
     }
     if (placeholder.includes('yyyy-mm')) {
-      return mm ? `${year}-${mm}` : '';
+      return mm ? `${yr}-${mm}` : '';
     }
     if (placeholder.includes('yyyy')) {
-      return mm ? `${mm}/${year}` : String(year);
+      return mm ? `${mm}/${yr}` : yr;
     }
-    // Default: MM/YYYY for text inputs
-    return mm ? `${mm}/${year}` : String(year);
+    // Default: MM/YYYY for text inputs — NEVER return partial
+    return mm ? `${mm}/${yr}` : yr;
   }
 
   // ── Fill work experience sections ──────────────────────────────────────────
@@ -1092,10 +1097,11 @@
       );
     });
 
-    const profile  = data.profile  || {};
-    const qa       = data.qa       || {};
-    const customQA = data.customQA || [];
-    _credentials   = data.credentials || {};
+    const profile    = data.profile    || {};
+    const qa         = data.qa         || {};
+    const customQA   = data.customQA   || [];
+    const skipFields = data.skipFields || [];
+    _credentials     = data.credentials || {};
 
     // 1. Auto-check consent/agreement checkboxes
     logFill(log, 'Checking consent boxes...', 'info');
@@ -1147,6 +1153,14 @@
       // entries we didn't have data for, or labels with error text appended)
       const labelFirst = label.split('\n')[0].trim(); // strip error messages after newline
       if (/^(from|to|month|year|job\s*title|company|employer|role\s*desc|responsibilities|i currently work|school|university|degree|field of study|major|gpa)\b/i.test(labelFirst)) {
+        skipped++; continue;
+      }
+
+      // User-configured skip list — skip fields matching any skip pattern
+      const labelLower = label.toLowerCase();
+      const shouldSkip = skipFields.some(pat => labelLower.includes(pat.toLowerCase()));
+      if (shouldSkip) {
+        logFill(log, `⊘ ${label} — skipped (skip list)`, 'info');
         skipped++; continue;
       }
 

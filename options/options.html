@@ -741,6 +741,24 @@
       </div>
     </div>
 
+    <!-- Skip Fields card -->
+    <div class="card">
+      <div class="card-title">Skip Fields</div>
+      <div class="card-subtitle">
+        Fields matching these labels will be left blank and never sent to Claude.
+        One label per line (case-insensitive, partial match). Example: "GPA" skips any field whose label contains "GPA".
+      </div>
+
+      <div class="field" style="margin-top: 12px;">
+        <textarea class="field-input" id="skip-fields" rows="5" placeholder="GPA&#10;Overall Result&#10;Cover Letter"></textarea>
+      </div>
+
+      <div class="card-footer">
+        <span class="saved-msg" id="skip-saved">&#10003; Skip list saved</span>
+        <button class="btn btn-primary" id="save-skip">Save Skip List</button>
+      </div>
+    </div>
+
     <!-- Claude CLI Server card -->
     <div class="card">
       <div class="card-title">Claude CLI Integration</div>

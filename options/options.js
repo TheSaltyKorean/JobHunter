@@ -645,6 +645,27 @@ document.getElementById('save-edu').addEventListener('click', () => {
   });
 });
 
+// ── Skip Fields ─────────────────────────────────────────────────────────
+function loadSkipFields() {
+  chrome.storage.local.get(['skipFields'], r => {
+    document.getElementById('skip-fields').value = (r.skipFields || []).join('\n');
+  });
+}
+
+document.getElementById('save-skip').addEventListener('click', () => {
+  const lines = document.getElementById('skip-fields').value
+    .split('\n')
+    .map(l => l.trim())
+    .filter(l => l.length > 0);
+  chrome.storage.local.set({ skipFields: lines }, () => {
+    if (chrome.runtime.lastError) {
+      alert('Save failed: ' + chrome.runtime.lastError.message);
+    } else {
+      showSaved('skip-saved');
+    }
+  });
+});
+
 // ── Claude CLI server config ────────────────────────────────────────────
 function loadClaudeConfig() {
   chrome.storage.local.get(['claudeServerPort'], r => {
@@ -744,4 +765,5 @@ loadCredentials();
 loadExperience();
 loadEducation();
 loadCustomQA();
+loadSkipFields();
 loadClaudeConfig();
