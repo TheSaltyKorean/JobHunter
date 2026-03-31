@@ -474,18 +474,30 @@
       if (!label || /select\s*one/i.test(label)) {
         let parent = btn.parentElement;
         for (let depth = 0; depth < 8 && parent; depth++) {
-          // Check for label/legend/span/p/h elements that contain question text
-          const candidates = parent.querySelectorAll(':scope > label, :scope > legend, :scope > div > label, :scope > span, :scope > p, :scope > div > span, :scope > div > p, :scope > h3, :scope > h4, :scope > div > h3, :scope > div > h4');
+          // Check ALL label/legend/span/p/h elements anywhere in this ancestor
+          const candidates = parent.querySelectorAll('label, legend, span, p, h3, h4, h5, div');
           for (const c of candidates) {
             if (c.contains(btn)) continue; // skip if it contains the button
+            if (c.querySelector('button')) continue; // skip containers that hold buttons
             const t = (c.innerText || c.textContent || '').trim();
-            if (t.length > 3 && t.length < 300 && !/select\s*one/i.test(t)) { label = t; break; }
+            if (t.length > 5 && t.length < 300 && !/select\s*one/i.test(t) && !/^\d+$/.test(t)) { label = t; break; }
           }
           if (label && !/select\s*one/i.test(label)) break;
           parent = parent.parentElement;
         }
       }
-      // Strategy 4: fallback to generic extractFieldLabel
+      // Strategy 5: Use the closest role="group" and grab its full text minus button text
+      if (!label || /select\s*one/i.test(label)) {
+        const group = btn.closest('[role="group"], [data-automation-id]');
+        if (group && group !== btn) {
+          // Clone the group, remove button elements, get remaining text
+          const clone = group.cloneNode(true);
+          clone.querySelectorAll('button, [aria-haspopup]').forEach(b => b.remove());
+          const text = (clone.innerText || clone.textContent || '').trim().replace(/\s+/g, ' ');
+          if (text.length > 5 && text.length < 300) label = text;
+        }
+      }
+      // Strategy 6: fallback to generic extractFieldLabel
       if (!label || /select\s*one/i.test(label)) {
         label = extractFieldLabel(btn);
       }
