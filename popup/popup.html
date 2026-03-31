@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JobHunter</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 340px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      min-height: 480px;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-brand { display: flex; align-items: center; gap: 10px; }
+    .header-icon { font-size: 22px; }
+    .header-title { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
+    .header-sub { font-size: 11px; opacity: 0.75; margin-top: 1px; }
+    .header-actions { display: flex; gap: 6px; }
+    .icon-btn {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      border-radius: 8px;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background 0.15s;
+    }
+    .icon-btn:hover { background: rgba(255,255,255,0.35); }
+
+    /* Stats */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      background: #1e293b;
+      border-bottom: 1px solid #334155;
+    }
+    .stat {
+      padding: 12px 6px;
+      text-align: center;
+      border-right: 1px solid #334155;
+      cursor: default;
+    }
+    .stat:last-child { border-right: none; }
+    .stat-num {
+      font-size: 22px;
+      font-weight: 800;
+      line-height: 1;
+    }
+    .stat-label {
+      font-size: 9px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-top: 3px;
+    }
+    .n-saved    { color: #94a3b8; }
+    .n-applied  { color: #6366f1; }
+    .n-interview{ color: #f59e0b; }
+    .n-offer    { color: #10b981; }
+
+    /* Section */
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #475569;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 12px 14px 6px;
+    }
+
+    /* Job List */
+    .job-list { padding: 0 10px; max-height: 230px; overflow-y: auto; }
+
+    .job-item {
+      background: #1e293b;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 6px;
+      cursor: pointer;
+      transition: background 0.12s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .job-item:hover { background: #293548; }
+
+    .status-pip {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .pip-saved    { background: #475569; }
+    .pip-applied  { background: #6366f1; }
+    .pip-interview{ background: #f59e0b; }
+    .pip-offer    { background: #10b981; }
+    .pip-rejected { background: #ef4444; }
+
+    .job-text { flex: 1; min-width: 0; }
+    .job-name {
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowraw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      color: #f1f5f9;
+    }
+    .job-co {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 2px;
+      white-space: nowraw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .job-arrow { color: #334155; font-size: 12px; flex-shrink: 0; }
+
+    .empty-state {
+      text-align: center;
+      color: #475569;
+      font-size: 12px;
+      padding: 24px 16px;
+      line-height: 1.6;
+    }
+    .empty-emoji { font-size: 28px; margin-bottom: 8px; }
+
+    /* Actions */
+    .actions {
+      padding: 10px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      border-top: 1px solid #1e293b;
+      margin-top: 6px;
+    }
+
+    .btn {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: inherit;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .btn-primary { background: #6366f1; color: white; }
+    .btn-primary:hover { background: #5254cc; transform: translateY(-1px); }
+    .btn-ghost { background: #1e293b; color: #94a3b8; }
+    .btn-ghost:hover { background: #293548; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-brand">
+    <div class="header-icon">🎯</div>
+    <div>
+      <div class="header-title">JobHunter</div>
+      <div class="header-sub">Application Tracker</div>
+    </div>
+  </div>
+  <div class="header-actions">
+    <button class="icon-btn" id="btn-settings" title="Profile & Settings">⚙️</button>
+  </div>
+</div>
+
+<div class="stats">
+  <div class="stat">
+    <div class="stat-num n-saved" id="n-saved">0</div>
+    <div class="stat-label">Saved</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num n-applied" id="n-applied">0</div>
+    <div class="stat-label">Applied</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num n-interview" id="n-interview">0</div>
+    <div class="stat-label">Interview</div>
+  </div>
+  <div class="stat">
+    <div class="stat-num n-offer" id="n-offer">0</div>
+    <div class="stat-label">Offers</div>
+  </div>
+</div>
+
+<div class="section-label">Recent Jobs</div>
+
+<div class="job-list" id="job-list">
+  <div class="empty-state">
+    <div class="empty-emoji">🔍</div>
+    Visit any job listing to<br>start tracking with one click.
+  </div>
+</div>
+
+<div class="actions">
+  <button class="btn btn-primary" id="btn-dashboard">📊 Dashboard</button>
+  <button class="btn btn-ghost" id="btn-profile">👤 My Profile</button>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

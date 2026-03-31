@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>JobHunter — Profile & Settings</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #293548;
+      --border: #334155;
+      --text: #f1f5f9;
+      --text2: #94a3b8;
+      --text3: #64748b;
+      --purple: #6366f1;
+      --green: #10b981;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 0;
+    }
+
+    /* Header */
+    .page-header {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      padding: 24px 0;
+    }
+    .page-header-inner {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header-brand { display: flex; align-items: center; gap: 12px; }
+    .header-icon { font-size: 28px; }
+    .header-title { font-size: 20px; font-weight: 800; }
+    .header-sub { font-size: 13px; opacity: 0.8; margin-top: 2px; }
+    .header-btn {
+      background: rgba(255,255,255,0.2);
+      border: none;
+      color: white;
+      border-radius: 10px;
+      padding: 9px 16px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      transition: background 0.15s;
+    }
+    .header-btn:hover { background: rgba(255,255,255,0.35); }
+
+    /* Layout */
+    .page-body { max-width: 820px; margin: 0 auto; padding: 28px 24px 60px; }
+
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: var(--green);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      z-index: 999;
+      opacity: 0;
+      transform: translateY(-8px);
+      transition: all 0.25s ease;
+      pointer-events: none;
+      box-shadow: 0 8px 30px rgba(16,185,129,0.4);
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    /* Sections */
+    .section {
+      background: var(--surface);
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 18px 22px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-icon { font-size: 18px; }
+    .section-title { font-size: 15px; font-weight: 800; }
+    .section-desc { font-size: 12px; color: var(--text3); margin-top: 2px; }
+
+    .section-body { padding: 20px 22px; }
+
+    /* Form grid */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    .grid-1 { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .span-2 { grid-column: span 2; }
+
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+    .required::after { content: ' *'; color: #f87171; }
+
+    .field-input, .field-select, .field-textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      padding: 10px 14px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .field-input:focus, .field-select:focus, .field-textarea:focus {
+      border-color: var(--purple);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+    }
+    .field-input::placeholder { color: var(--text3); }
+    .field-textarea { resize: vertical; min-height: 80px; }
+    .field-select option { background: var(--surface); }
+
+    .field-hint { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+    /* Toggle */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      border-bottom: 1px solid rgba(51,65,85,0.5);
+    }
+    .toggle-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .toggle-info { }
+    .toggle-title { font-size: 14px; font-weight: 600; }
+    .toggle-desc { font-size: 12px; color: var(--text3); margin-top: 2px; }
+    .toggle {
+      position: relative;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--border);
+      border-radius: 24px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 18px;
+      height: 18px;
+      left: 3px;
+      top: 3px;
+      border-radius: 50%;
+      background: white;
+      transition: transform 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: var(--purple); }
+    .toggle input:checked + .toggle-slider::before { transform: translateX(20px); }
+
+    /* Save button */
+    .save-row {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+      padding-top: 6px;
+    }
+
+    .btn {
+      padding: 11px 24px;
+      border-radius: 11px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: var(--purple); color: white; }
+    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+    .btn-ghost { background: var(--surface2); color: var(--text2); }
+    .btn-ghost:hover { background: var(--border); }
+
+    /* Danger zone */
+    .danger-zone {
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .danger-title { font-size: 14px; font-weight: 700; color: #f87171; }
+    .danger-desc { font-size: 12px; color: var(--text3); margin-top: 2px; }
+    .btn-danger { background: rgba(239,68,68,0.15); color: #f87171; padding: 9px 18px; border-radius: 10px; border: 1px solid rgba(239,68,68,0.3); cursor: pointer; font-size: 13px; font-weight: 700; font-family: inherit; transition: all 0.15s; }
+    .btn-danger:hover { background: rgba(239,68,68,0.25); }
+
+    /* Divider */
+    .divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<div class="toast" id="toast">✅ Profile saved!</div>
+
+<div class="page-header">
+  <div class="page-header-inner">
+    <div class="header-brand">
+      <div class="header-icon">🎯</div>
+      <div>
+        <div class="header-title">Profile & Settings</div>
+        <div class="header-sub">Your info is stored locally — never sent anywhere</div>
+      </div>
+    </div>
+    <button class="header-btn" id="open-dashboard">📊 Dashboard</button>
+  </div>
+</div>
+
+<div class="page-body">
+
+  <!-- Personal Info -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">👤</span>
+      <div>
+        <div class="section-title">Personal Information</div>
+        <div class="section-desc">Used to fill in basic form fields automatically</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="grid-2" style="margin-bottom:14px">
+        <div class="field">
+          <label class="field-label required">First Name</label>
+          <input class="field-input" id="firstName" placeholder="Randy">
+        </div>
+        <div class="field">
+          <label class="field-label required">Last Name</label>
+          <input class="field-input" id="lastName" placeholder="Walker">
+        </div>
+        <div class="field">
+          <label class="field-label required">Email Address</label>
+          <input class="field-input" id="email" type="email" placeholder="randy@example.com">
+        </div>
+        <div class="field">
+          <label class="field-label">Phone Number</label>
+          <input class="field-input" id="phone" type="tel" placeholder=")512) 555-0123">
+        </div>
+        <div class="field span-2">
+          <label class="field-label">Street Address</label>
+          <input class="field-input" id="address" placeholder="123 Main Street">
+        </div>
+        <div class="field">
+          <label class="field-label">City</label>
+          <input class="field-input" id="city" placeholder="Austin">
+        </div>
+        <div class="field">
+          <label class="field-label">State</label>
+          <input class="field-input" id="state" placeholder="TX">
+        </div>
+      </div>
+      <div class="grid-3">
+        <div class="field">
+          <label class="field-label">ZIP Code</label>
+          <input class="field-input" id="zip" placeholder="78701">
+        </div>
+        <div class="field">
+          <label class="field-label">Country</label>
+          <input class="field-input" id="country" value="United States">
+        </div>
+        <div class="field">
+          <label class="field-label">LinkedIn URL</label>
+          <input class="field-input" id="linkedin" placeholder="https://linkedin.com/in/…">
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="grid-3">
+        <div class="field">
+          <label class="field-label">GitHub URL</label>
+          <input class="field-input" id="github" placeholder="https://github.com/…">
+        </div>
+        <div class="field">
+          <label class="field-label">Portfolio / Website</label>
+          <input class="field-input" id="website" placeholder="https://…">
+        </div>
+        <div class="field">
+          <label class="field-label">Current / Target Title</label>
+          <input class="field-input" id="currentTitle" placeholder="IT Director">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Work Info -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">💼</span>
+      <div>
+        <div class="section-title">Work & Compensation</div>
+        <div class="section-desc">Fills salary, experience, and work authorization fields</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="grid-3" style="margin-bottom:14px">
+        <div class="field">
+          <label class="field-label">Years of Experience</label>
+          <input class="field-input" id="yearsExperience" placeholder="20">
+        </div>
+        <div class="field">
+          <label class="field-label">Desired Salary</label>
+          <input class="field-input" id="salaryExpectation" placeholder="180000">
+          <div class="field-hint">Used for "expected salary" fields</div>
+        </div>
+        <div class="field">
+          <label class="field-label">Minimum Salary</label>
+          <input class="field-input" id="salaryMin" placeholder="150000">
+          <div class="field-hint">Used for "minimum salary" fields</div>
+        </div>
+        <div class="field">
+          <label class="field-label">Work Authorization</label>
+          <select class="field-select" id="workAuthorization">
+            <option value="US Citizen">US Citizen</option>
+            <option value="Permanent Resident">Permanent Resident (Green Card)</option>
+            <option value="H-1B">H-1B Visa</option>
+            <option value="OPT">OPT / STEM OPT</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Requires Sponsorship?</label>
+          <select class="field-select" id="requireSponsorship">
+            <option value="No">No</option>
+            <option value="Yes">Yes</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="field-label">Default Cover Letter</label>
+        <textarea class="field-textarea" id="coverLetterDefault" placeholder="Optional: paste your go-to cover letter or template. You can customize per application."></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- EEO / Diversity -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">🍊</span>
+      <div>
+        <div class="section-title">Diversity & EEO (Optional)</div>
+        <div class="section-desc">Auto-fills the optional demographic questions on applications — all voluntary</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="grid-3">
+        <div class="field">
+          <label class="field-label">Gender</label>
+          <select class="field-select" id="gender">
+            <option value="">Prefer not to say</option>
+            <option value="Male">Male</option>
+            <option value="Female">Female</option>
+            <option value="Non-binary">Non-binary</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Race / Ethnicity</label>
+          <select class="field-select" id="ethnicity">
+            <option value="">Prefer not to say</option>
+            <option value="Asian">Asian</option>
+            <option value="Black or African American">Black or African American</option>
+            <option value="Hispanic or Latino">Hispanic or Latino</option>
+            <option value="White">White / Caucasian</option>
+            <option value="Two or more races">Two or more races</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Veteran Status</label>
+          <select class="field-select" id="veteran">
+            <option value="No">Not a Veteran</option>
+            <option value="Yes">Veteran</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="field-label">Disability Status</label>
+          <select class="field-select" id="disability">
+            <option value="No">No disability</option>
+            <option value="Yes">Yes, I have a disability</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings -->
+  <div class="section">
+    <div class="section-header">
+      <span class="section-icon">⚙️</span>
+      <div>
+        <div class="section-title">Extension Settings</div>
+        <div class="section-desc">Control how JobHunter behaves</div>
+      </div>
+    </div>
+    <div class="section-body">
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-title">Auto-detect job postings</div>
+          <div class="toggle-desc">Show the 🎯 button whenever a job posting is detected</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="autoDetect" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-title">Highlight auto-filled fields</div>
+          <div class="toggle-desc">Show a green outline on fields that were filled in</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="highlightFilled" checked><span class="toggle-slider"></span></label>
+      </div>
+      <div class="toggle-row">
+        <div class="toggle-info">
+          <div class="toggle-title">Show badge on extension icon</div>
+          <div class="toggle-desc">Display interview / offer count on the toolbar icon</div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="showBadge" checked><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save -->
+  <div class="save-row">
+    <button class="btn btn-ghost" id="open-dashboard-2">📊 Dashboard</button>
+    <button class="btn btn-primary" id="save-btn">💾 Save Profile</button>
+  </div>
+
+  <!-- Danger -->
+  <div style="margin-top:40px">
+    <div class="danger-zone">
+      <div>
+        <div class="danger-title">🗑 Clear All Data</div>
+        <div class="danger-desc">Permanently delete all tracked jobs and reset your profile. Cannot be undone.</div>
+      </div>
+      <button class="btn-danger" id="clear-all">Clear Everything</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="options.js"></script>
+</body>
+</html>

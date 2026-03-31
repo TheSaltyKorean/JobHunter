@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>JobHunter Dashboard</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #293548;
+      --border: #334155;
+      --text: #f1f5f9;
+      --text2: #94a3b8;
+      --text3: #64748b;
+      --purple: #6366f1;
+      --purple-light: #ede9fe;
+      --green: #10b981;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --blue: #3b82f6;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Sidebar ───────────────────────────────────────────────────────── */
+    .layout { display: flex; min-height: 100vh; }
+
+    .sidebar {
+      width: 220px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+
+    .sidebar-logo {
+      padding: 20px 18px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-icon { font-size: 24px; }
+    .logo-text { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
+
+    .sidebar-nav { flex: 1; padding: 12px 10px; }
+
+    .nav-section-label {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      padding: 10px 8px 4px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text2);
+      transition: all 0.12s;
+      user-select: none;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: rgba(99,102,241,0.15); color: var(--purple); font-weight: 700; }
+    .nav-icon { font-size: 15px; width: 18px; text-align: center; }
+    .nav-badge {
+      margin-left: auto;
+      background: var(--purple);
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 10px;
+      padding: 1px 7px;
+      min-width: 20px;
+      text-align: center;
+    }
+
+    .sidebar-footer {
+      padding: 12px 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .profile-chip {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 10px;
+      background: var(--surface2);
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .profile-chip:hover { background: var(--border); }
+    .profile-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--purple), #8b5cf6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .profile-info { min-width: 0; }
+    .profile-name { font-size: 12px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .profile-role { font-size: 10px; color: var(--text3); }
+
+    /* ── Main ──────────────────────────────────────────────────────────── */
+    .main { flex: 1; display: flex; flex-direction: column; }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .topbar-title { font-size: 18px; font-weight: 800; flex: 1; }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 12px;
+      width: 260px;
+    }
+    .search-box input {
+      background: none;
+      border: none;
+      outline: none;
+      color: var(--text);
+      font-size: 13px;
+      width: 100%;
+      font-family: inherit;
+    }
+    .search-box input::placeholder { color: var(--text3); }
+
+    .filter-select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 13px;
+      padding: 8px 12px;
+      outline: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .btn {
+      padding: 9px 16px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 700;
+      font-family: inherit;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-primary { background: var(--purple); color: white; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-ghost { background: var(--surface2); color: var(--text2); }
+    .btn-ghost:hover { background: var(--border); color: var(--text); }
+    .btn-danger { background: var(--red); color: white; }
+    .btn-sm { padding: 5px 10px; font-size: 11px; }
+
+    /* ── Stats Row ─────────────────────────────────────────────────────── */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 1px;
+      background: var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .stat-card {
+      background: var(--surface);
+      padding: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .stat-card:hover { background: var(--surface2); }
+    .stat-card.active { background: rgba(99,102,241,0.12); }
+
+    .stat-value { font-size: 26px; font-weight: 800; line-height: 1; }
+    .stat-label-sm {
+      font-size: 10px;
+      color: var(--text3);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-top: 4px;
+    }
+
+    /* ── Content ───────────────────────────────────────────────────────── */
+    .content { flex: 1; padding: 20px 24px; }
+
+    /* ── Job Table ─────────────────────────────────────────────────────── */
+    .table-wrap {
+      background: var(--surface);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      text-align: left;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text3);
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+    thead th:hover { color: var(--text2); }
+    thead th.sorted { color: var(--purple); }
+
+    tbody tr {
+      border-bottom: 1px solid rgba(51,65,85,0.5);
+      transition: background 0.1s;
+      cursor: pointer;
+    }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+
+    td {
+      padding: 13px 16px;
+      font-size: 13px;
+      vertical-align: middle;
+    }
+
+    .td-title { font-weight: 600; color: var(--text); max-width: 220px; }
+    .td-title span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .td-company { color: var(--text2); white-space: nowrap; }
+    .td-location { color: var(--text3); font-size: 12px; }
+    .td-platform { }
+    .td-date { color: var(--text3); font-size: 12px; white-space: nowrap; }
+    .td-actions { white-space: nowrap; }
+
+    .platform-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      border-radius: 5px;
+      padding: 2px 8px;
+      background: var(--surface2);
+      color: var(--text2);
+    }
+
+    /* Status badges */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11px;
+      font-weight: 700;
+      border-radius: 20px;
+      padding: 4px 10px;
+      white-space: nowrap;
+    }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; }
+
+    .s-saved     { background: rgba(71,85,105,0.25); color: #94a3b8; }
+    .s-applied   { background: rgba(99,102,241,0.15); color: #818cf8; }
+    .s-interview { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .s-offer     { background: rgba(16,185,129,0.15); color: #34d399; }
+    .s-rejected  { background: rgba(239,68,68,0.15); color: #f87171; }
+
+    .d-saved     { background: #475569; }
+    .d-applied   { background: #6366f1; }
+    .d-interview { background: #f59e0b; }
+    .d-offer     { background: #10b981; }
+    .d-rejected  { background: #ef4444; }
+
+    /* ── Action buttons in row ─────────────────────────────────────────── */
+    .row-actions { display: flex; gap: 4px; }
+    .row-btn {
+      padding: 5px 8px;
+      border-radius: 7px;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: inherit;
+      transition: all 0.12s;
+    }
+    .row-btn-status { background: var(--surface2); color: var(--text2); font-weight: 600; font-size: 11px; }
+    .row-btn-status:hover { background: var(--border); }
+    .row-btn-del { background: transparent; color: var(--text3); }
+    .row-btn-del:hover { background: rgba(239,68,68,0.12); color: var(--red); }
+
+    /* ── Status select ──────────────────────────────────────────────────── */
+    .status-select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 8px;
+      outline: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    /* ── Notes modal ────────────────────────────────────────────────────── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      backdrop-filter: blur(4px);
+    }
+    .modal {
+      background: var(--surface);
+      border-radius: 18px;
+      width: 500px;
+      max-width: 95vw;
+      border: 1px solid var(--border);
+      box-shadow: 0 40px 120px rgba(0,0,0,0.5);
+      animation: modal-in 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes modal-in {
+      from { opacity: 0; transform: scale(0.93); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    .modal-header {
+      padding: 20px 22px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .modal-title-area { flex: 1; }
+    .modal-job-title { font-size: 16px; font-weight: 800; }
+    .modal-job-co { font-size: 13px; color: var(--text2); margin-top: 2px; }
+    .modal-body { padding: 20px 22px; display: flex; flex-direction: column; gap: 14px; }
+
+    .field-label { font-size: 11px; font-weight: 700; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+
+    .field-select, .field-textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      padding: 10px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .field-select:focus, .field-textarea:focus { border-color: var(--purple); }
+    .field-textarea { resize: vertical; min-height: 90px; }
+
+    .modal-footer {
+      padding: 14px 22px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    /* ── Empty state ────────────────────────────────────────────────────── */
+    .empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: var(--text3);
+    }
+    .empty-icon { font-size: 48px; margin-bottom: 16px; }
+    .empty-title { font-size: 16px; font-weight: 700; color: var(--text2); margin-bottom: 6px; }
+    .empty-sub { font-size: 13px; line-height: 1.6; text-align: center; }
+
+    /* ── Add Job Manual ─────────────────────────────────────────────────── */
+    .add-job-form {
+      background: var(--surface);
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      padding: 20px;
+      display: none;
+      margin-bottom: 16px;
+    }
+    .add-job-form.visible { display: block; }
+    .add-job-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .form-field { display: flex; flex-direction: column; gap: 5px; }
+    .form-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 13px;
+      font-family: inherit;
+      padding: 8px 12px;
+      outline: none;
+    }
+    .form-input:focus { border-color: var(--purple); }
+    .form-row { display: flex; gap: 8px; justify-content: flex-end; }
+
+    /* ── Scrollbar ──────────────────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🎯</div>
+      <div class="logo-text">JobHunter</div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Filter by Status</div>
+      <div class="nav-item active" data-filter="all">
+        <span class="nav-icon">📋</span> All Jobs
+        <span class="nav-badge" id="badge-all">0</span>
+      </div>
+      <div class="nav-item" data-filter="saved">
+        <span class="nav-icon">🔖</span> Saved
+        <span class="nav-badge" id="badge-saved">0</span>
+      </div>
+      <div class="nav-item" data-filter="applied">
+        <span class="nav-icon">📤</span> Applied
+        <span class="nav-badge" id="badge-applied">0</span>
+      </div>
+      <div class="nav-item" data-filter="interview">
+        <span class="nav-icon">🗓️</span> Interviews
+        <span class="nav-badge" id="badge-interview">0</span>
+      </div>
+      <div class="nav-item" data-filter="offer">
+        <span class="nav-icon">🎉</span> Offers
+        <span class="nav-badge" id="badge-offer">0</span>
+      </div>
+      <div class="nav-item" data-filter="rejected">
+        <span class="nav-icon">✖️</span> Rejected
+        <span class="nav-badge" id="badge-rejected">0</span>
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="profile-chip" id="go-options">
+        <div class="profile-avatar" id="avatar-initials">RW</div>
+        <div class="profile-info">
+          <div class="profile-name" id="profile-name-display">Randy Walker</div>
+          <div class="profile-role">Edit Profile →</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <div class="topbar">
+      <div class="topbar-title" id="view-title">All Jobs</div>
+      <div class="search-box">
+        <span>🔍</span>
+        <input type="text" id="search-input" placeholder="Search jobs, companies…">
+      </div>
+      <select class="filter-select" id="sort-select">
+        <option value="savedAt-desc">Newest First</option>
+        <option value="savedAt-asc">Oldest First</option>
+        <option value="company-asc">Company A→Z</option>
+        <option value="title-asc">Title A→Z</option>
+      </select>
+      <button class="btn btn-ghost btn-sm" id="btn-add-job">+ Add Manual</button>
+      <button class="btn btn-ghost btn-sm" id="btn-export">⬇ Export</button>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row">
+      <div class="stat-card" data-filter="all">
+        <div class="stat-value" id="stat-total" style="color:#6366f1">0</div>
+        <div class="stat-label-sm">Total</div>
+      </div>
+      <div class="stat-card" data-filter="saved">
+        <div class="stat-value" id="stat-saved" style="color:#94a3b8">0</div>
+        <div class="stat-label-sm">Saved</div>
+      </div>
+      <div class="stat-card" data-filter="applied">
+        <div class="stat-value" id="stat-applied" style="color:#6366f1">0</div>
+        <div class="stat-label-sm">Applied</div>
+      </div>
+      <div class="stat-card" data-filter="interview">
+        <div class="stat-value" id="stat-interview" style="color:#f59e0b">0</div>
+        <div class="stat-label-sm">Interviews</div>
+      </div>
+      <div class="stat-card" data-filter="offer">
+        <div class="stat-value" id="stat-offer" style="color:#10b981">0</div>
+        <div class="stat-label-sm">Offers</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-rate" style="color:#f59e0b">0%</div>
+        <div class="stat-label-sm">Interview Rate</div>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- Add Job Form -->
+      <div class="add-job-form" id="add-job-form">
+        <div class="add-job-grid">
+          <div class="form-field">
+            <label class="field-label">Job Title</label>
+            <input class="form-input" id="aj-title" placeholder="e.g. VP of IT">
+          </div>
+          <div class="form-field">
+            <label class="field-label">Company</label>
+            <input class="form-input" id="aj-company" placeholder="Company name">
+          </div>
+          <div class="form-field">
+            <label class="field-label">Location</label>
+            <input class="form-input" id="aj-location" placeholder="City, State or Remote">
+          </div>
+          <div class="form-field">
+            <label class="field-label">Platform</label>
+            <input class="form-input" id="aj-platform" placeholder="LinkedIn, Email, etc.">
+          </div>
+          <div class="form-field">
+            <label class="field-label">Job URL</label>
+            <input class="form-input" id="aj-url" placeholder="https://...">
+          </div>
+          <div class="form-field">
+            <label class="field-label">Status</label>
+            <select class="form-input" id="aj-status">
+              <option value="saved">Saved</option>
+              <option value="applied">Applied</option>
+              <option value="interview">Interview</option>
+              <option value="offer">Offer</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <button class="btn btn-ghost btn-sm" id="cancel-add">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="confirm-add">💾 Save Job</button>
+        </div>
+      </div>
+
+      <!-- Table -->
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th data-sort="title">Position ↕</th>
+              <th data-sort="company">Company ₕ</th>
+              <th>Location</th>
+              <th>Platform</th>
+              <th>Status</th>
+              <th data-sort="savedAt">Date ↕</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="job-tbody"></tbody>
+        </table>
+        <div class="empty" id="empty-state" style="display:none">
+          <div class="empty-icon">🔍</div>
+          <div class="empty-title">No jobs here yet</div>
+          <div class="empty-sub">Browse job sites and click the 🎯 button<br>to start tracking applications.</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Job Detail Modal -->
+<div class="modal-overlay" id="modal" style="display:none">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title-area">
+        <div class="modal-job-title" id="modal-title">—</div>
+        <div class="modal-job-co" id="modal-company">—</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="modal-close">✕ Close</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <div class="field-label">Status</div>
+        <select class="field-select" id="modal-status">
+          <option value="saved">🔖 Saved</option>
+          <option value="applied">📤 Applied</option>
+          <option value="interview">🗓️ Interview Scheduled</option>
+          <option value="offer">🎉 Offer Received</option>
+          <option value="rejected">✖️ Rejected / Closed</option>
+        </select>
+      </div>
+      <div>
+        <div class="field-label">Salary / Comp</div>
+        <input class="field-select" id="modal-salary" type="text" placeholder="e.g. $180k base + equity" style="width:100%">
+      </div>
+      <div>
+        <div class="field-label">Notes</div>
+        <textarea class="field-textarea" id="modal-notes" placeholder="Recruiter name, next steps, impressions…"></textarea>
+      </div>
+      <div id="modal-url-row">
+        <div class="field-label">Job URL</div>
+        <a id="modal-url" href="#" target="_blank" style="font-size:12px;color:#6366f1;word-break:break-all"></a>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm" id="modal-delete">🗑 Delete</button>
+      <button class="btn btn-ghost btn-sm" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-save">💾 Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<script src="dashboard.js"></script>
+</body>
+</html>
