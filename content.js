@@ -442,30 +442,68 @@
     return true;
   }
 
+  // US state abbreviation ↔ full name mapping for dropdown matching
+  const US_STATES = {
+    'al':'alabama','ak':'alaska','az':'arizona','ar':'arkansas','ca':'california',
+    'co':'colorado','ct':'connecticut','de':'delaware','fl':'florida','ga':'georgia',
+    'hi':'hawaii','id':'idaho','il':'illinois','in':'indiana','ia':'iowa','ks':'kansas',
+    'ky':'kentucky','la':'louisiana','me':'maine','md':'maryland','ma':'massachusetts',
+    'mi':'michigan','mn':'minnesota','ms':'mississippi','mo':'missouri','mt':'montana',
+    'ne':'nebraska','nv':'nevada','nh':'new hampshire','nj':'new jersey','nm':'new mexico',
+    'ny':'new york','nc':'north carolina','nd':'north dakota','oh':'ohio','ok':'oklahoma',
+    'or':'oregon','pa':'pennsylvania','ri':'rhode island','sc':'south carolina',
+    'sd':'south dakota','tn':'tennessee','tx':'texas','ut':'utah','vt':'vermont',
+    'va':'virginia','wa':'washington','wv':'west virginia','wi':'wisconsin','wy':'wyoming',
+    'dc':'district of columbia',
+  };
+  // Reverse map: full name → abbreviation
+  const US_STATES_REV = {};
+  for (const [abbr, full] of Object.entries(US_STATES)) US_STATES_REV[full] = abbr;
+
   function fillSelect(el, matchText) {
-    const lower = matchText.toLowerCase();
-    // Try exact match first, then partial
+    const lower = matchText.toLowerCase().trim();
+    // Expand state abbreviation for matching (e.g. "FL" → also try "florida")
+    const stateExpanded = US_STATES[lower] || '';
+    const stateAbbr = US_STATES_REV[lower] || '';
+    const variants = [lower];
+    if (stateExpanded) variants.push(stateExpanded);
+    if (stateAbbr) variants.push(stateAbbr);
+
     let best = null;
     let bestScore = 0;
     for (const opt of el.options) {
       if (opt.disabled || !opt.value) continue;
-      const optText = opt.text.toLowerCase();
-      const optVal  = opt.value.toLowerCase();
-      if (optText === lower || optVal === lower) { best = opt; bestScore = 1000; break; }
-      // Partial match
+      const optText = opt.text.toLowerCase().trim();
+      const optVal  = opt.value.toLowerCase().trim();
+
+      // Try exact match against all variants
+      for (const v of variants) {
+        if (optText === v || optVal === v) { best = opt; bestScore = 1000; break; }
+      }
+      if (bestScore >= 1000) break;
+
+      // State abbreviation in option value (common: value="FL", text="Florida")
+      if (stateExpanded && (optText === stateExpanded || optVal === lower)) {
+        best = opt; bestScore = 999; continue;
+      }
+      if (stateAbbr && (optVal === stateAbbr || optText === lower)) {
+        best = opt; bestScore = 999; continue;
+      }
+
+      // Partial word match
       const words = lower.split(/\s+/);
       let score = 0;
       for (const w of words) {
         if (optText.includes(w)) score += w.length;
         if (optVal.includes(w)) score += w.length;
       }
-      // Also check if option text is contained in our answer
       if (lower.includes(optText) && optText.length > 1) score += optText.length * 2;
       if (score > bestScore) { bestScore = score; best = opt; }
     }
     if (best && bestScore > 1) {
       el.value = best.value;
       el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('input', { bubbles: true }));
       return true;
     }
     return false;
@@ -587,6 +625,13 @@
       '_location':   profile.location || ((profile.city || '') + (profile.state ? ', ' + profile.state : '')),
       '_password':   _credentials.password || '',
       '_username':   _credentials.username || _credentials.email || profile.email || '',
+      '_phoneType':  'Mobile',
+      '_previouslyWorked': 'No',
+      '_nonCompete':       'No',
+      '_backgroundCheck':  'Yes',
+      '_drugTest':         'Yes',
+      '_criminalHistory':  'No',
+      '_over18':           'Yes',
     };
     if (key in map) return map[key];
     // Q&A key

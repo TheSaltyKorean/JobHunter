@@ -41,13 +41,14 @@ const FIELD_RULES = [
 
   // Contact
   { patterns: ['e-?mail', 'email\\s*address'],                      key: '_email',         type: 'input' },
-  { patterns: ['phone', 'mobile', 'cell', 'telephone', 'contact\\s*number'], key: '_phone', type: 'input' },
+  { patterns: ['phone.*number', 'mobile.*number', 'cell.*number', 'telephone.*number', 'contact\\s*number', 'phone\\b', 'mobile\\b', 'cell\\b', 'telephone\\b'], key: '_phone', type: 'input' },
+  { patterns: ['phone.*type', 'phone.*device', 'device.*type', 'type.*phone'], key: '_phoneType', type: 'select' },
 
   // Address fields
   { patterns: ['street.*address', 'address.*line.*1', 'address\\s*1', 'mailing.*address', 'home.*address'], key: '_street', type: 'input' },
   { patterns: ['address.*line.*2', 'address\\s*2', 'apt', 'suite', 'unit'],  key: '_street2',   type: 'input' },
   { patterns: ['^city$', 'city\\b', 'current.*city', 'where.*located'],       key: '_city',      type: 'input' },
-  { patterns: ['^state$', 'state\\b', 'province', 'region'],                  key: '_state',     type: 'input' },
+  { patterns: ['^state$', 'state\\b', 'province', 'region'],                  key: '_state',     type: 'select' },
   { patterns: ['zip', 'postal.*code', 'post.*code', 'zip.*code'],             key: '_zip',       type: 'input' },
   { patterns: ['country', 'country.*resid', 'country.*citizen'],               key: '_country',   type: 'select' },
   { patterns: ['location', 'current.*location'],                               key: '_location',  type: 'input' },
@@ -87,6 +88,14 @@ const FIELD_RULES = [
   { patterns: ['additional.*info', 'anything.*else', 'comments', 'notes.*recruiter'], key: 'additionalInfo', type: 'textarea' },
   { patterns: ['how.*hear', 'where.*hear', 'how.*find', 'referral.*source', 'source'], key: 'howDidYouHear', type: 'input' },
   { patterns: ['referred.*by', 'referr'],                           key: 'referredBy',     type: 'input' },
+
+  // Common yes/no questions
+  { patterns: ['previously.*worked', 'previously.*employed', 'former.*employee', 'ever.*worked.*for', 'have you.*worked'], key: '_previouslyWorked', type: 'select' },
+  { patterns: ['non.*compete', 'non-compete', 'restrictive.*covenant', 'non.*disclosure'], key: '_nonCompete', type: 'select' },
+  { patterns: ['background.*check', 'consent.*background', 'authorize.*background'], key: '_backgroundCheck', type: 'select' },
+  { patterns: ['drug.*test', 'drug.*screen', 'substance.*test'],    key: '_drugTest',      type: 'select' },
+  { patterns: ['felony', 'convicted', 'criminal.*record', 'criminal.*history', 'been convicted'], key: '_criminalHistory', type: 'select' },
+  { patterns: ['18.*years', 'over.*18', 'age.*18', 'at.*least.*18', 'legally.*age'], key: '_over18', type: 'select' },
 ];
 
 // Compile regex once at startup
