@@ -28,6 +28,140 @@ const DEFAULT_QA = {
   websiteUrl:         '',
 };
 
+// ─── Fuzzy Matching — maps question text patterns to answer keys ───────────
+// Each rule: { patterns: [regex strings], key: qaKey, type: 'input'|'select'|'radio'|'textarea' }
+const FIELD_RULES = [
+  // Name fields
+  { patterns: ['first\\s*name', 'given\\s*name', 'nombre'],         key: '_firstName',     type: 'input' },
+  { patterns: ['last\\s*name', 'family\\s*name', 'surname'],        key: '_lastName',      type: 'input' },
+  { patterns: ['full\\s*name', 'your\\s*name', 'legal\\s*name', 'candidate\\s*name', '^name$', '^name\\b'], key: '_fullName', type: 'input' },
+
+  // Contact
+  { patterns: ['e-?mail', 'email\\s*address'],                      key: '_email',         type: 'input' },
+  { patterns: ['phone', 'mobile', 'cell', 'telephone', 'contact\\s*number'], key: '_phone', type: 'input' },
+  { patterns: ['city', 'location', 'address', 'where.*located', 'current.*city'], key: '_location', type: 'input' },
+
+  // Links
+  { patterns: ['linkedin', 'linked\\s*in'],                         key: 'linkedinUrl',    type: 'input' },
+  { patterns: ['github'],                                            key: 'githubUrl',      type: 'input' },
+  { patterns: ['website', 'portfolio', 'personal.*url', 'blog'],    key: 'websiteUrl',     type: 'input' },
+
+  // Work authorization
+  { patterns: ['authorized.*work', 'work.*authoriz', 'eligible.*work', 'legally.*authorized', 'right to work', 'employment.*eligib', 'permission to work'], key: 'workAuthorization', type: 'select' },
+  { patterns: ['sponsor', 'visa.*sponsor', 'require.*sponsor', 'need.*sponsor', 'immigration.*sponsor'], key: 'sponsorship', type: 'select' },
+  { patterns: ['relocat', 'willing.*relocat', 'open.*relocat'],     key: 'willingToRelocate', type: 'select' },
+
+  // Compensation & availability
+  { patterns: ['salary', 'compensation', 'pay.*expect', 'desired.*pay', 'wage', 'expected.*comp', 'annual.*comp'], key: 'desiredSalary', type: 'input' },
+  { patterns: ['start.*date', 'earliest.*start', 'when.*start', 'available.*start', 'availability', 'notice.*period'], key: 'startDate', type: 'input' },
+
+  // Experience
+  { patterns: ['years.*experience', 'experience.*years', 'how many years', 'total.*experience', 'professional.*experience', 'yrs.*exp'], key: 'yearsExperience', type: 'input' },
+
+  // Education
+  { patterns: ['education', 'degree', 'highest.*education', 'education.*level', 'academic'], key: 'educationLevel', type: 'select' },
+  { patterns: ['university', 'school', 'college', 'institution', 'alma.*mater'], key: 'university', type: 'input' },
+  { patterns: ['graduat.*year', 'year.*graduat', 'class.*of', 'completion.*year'], key: 'graduationYear', type: 'input' },
+  { patterns: ['major', 'field.*study', 'concentration', 'discipline'], key: 'major', type: 'input' },
+  { patterns: ['gpa', 'grade.*point'],                              key: 'gpa',            type: 'input' },
+
+  // EEO / voluntary self-identification
+  { patterns: ['gender', 'sex$', 'sex\\b'],                         key: 'gender',         type: 'select' },
+  { patterns: ['veteran', 'military.*service', 'protected.*vet'],   key: 'veteranStatus',  type: 'select' },
+  { patterns: ['disabilit', 'handicap'],                             key: 'disabilityStatus', type: 'select' },
+  { patterns: ['ethnic', 'race', 'hispanic', 'latino'],             key: 'ethnicity',      type: 'select' },
+
+  // Cover letter / additional
+  { patterns: ['cover.*letter', 'letter.*motivation'],               key: 'coverLetter',   type: 'textarea' },
+  { patterns: ['additional.*info', 'anything.*else', 'comments', 'notes.*recruiter'], key: 'additionalInfo', type: 'textarea' },
+  { patterns: ['how.*hear', 'where.*hear', 'how.*find', 'referral.*source', 'source'], key: 'howDidYouHear', type: 'input' },
+  { patterns: ['referred.*by', 'referr'],                           key: 'referredBy',     type: 'input' },
+  { patterns: ['country', 'country.*resid', 'country.*citizen'],    key: 'country',        type: 'select' },
+  { patterns: ['state', 'province'],                                 key: 'state',          type: 'select' },
+];
+
+// Compile regex once at startup
+const COMPILED_RULES = FIELD_RULES.map(rule => ({
+  ...rule,
+  regexes: rule.patterns.map(p => new RegExp(p, 'i')),
+}));
+
+function matchQuestionToKey(questionText) {
+  const text = (questionText || '').toLowerCase().trim();
+  if (!text) return null;
+  let bestMatch = null;
+  let bestScore = 0;
+  for (const rule of COMPILED_RULES) {
+    for (const rx of rule.regexes) {
+      if (rx.test(text)) {
+        // Prefer more specific (longer) pattern matches
+        const score = rx.source.length;
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = { key: rule.key, type: rule.type };
+        }
+      }
+    }
+  }
+  return bestMatch;
+}
+
+// ─── Claude API for unknown questions ──────────────────────────────────────
+async function getClaudeApiKey() {
+  return new Promise(resolve => {
+    chrome.storage.local.get(['claudeApiKey'], r => resolve(r.claudeApiKey || ''));
+  });
+}
+
+async function getCustomQA() {
+  return new Promise(resolve => {
+    chrome.storage.local.get(['customQA'], r => resolve(r.customQA || []));
+  });
+}
+
+async function askClaude(question, profile, qa) {
+  const apiKey = await getClaudeApiKey();
+  if (!apiKey) return null;
+
+  const profileSummary = Object.entries(profile)
+    .filter(([_, v]) => v)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n');
+  const qaSummary = Object.entries(qa)
+    .filter(([_, v]) => v)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n');
+
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250514',
+        max_tokens: 300,
+        system: `You are helping fill out a job application. Given the applicant's profile and a question from the application form, provide ONLY the answer text — no explanation, no quotes, no extra formatting. If it's a yes/no or multiple choice question, respond with just the matching option. If you truly cannot determine an answer, respond with exactly: SKIP`,
+        messages: [{
+          role: 'user',
+          content: `Applicant profile:\n${profileSummary}\n\nKnown Q&A:\n${qaSummary}\n\nApplication question: "${question}"\n\nProvide the best answer:`,
+        }],
+      }),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    const answer = data?.content?.[0]?.text?.trim();
+    if (!answer || answer === 'SKIP') return null;
+    return answer;
+  } catch (e) {
+    console.error('JobHunter Claude API error:', e);
+    return null;
+  }
+}
+
 // ─── Job Type Detection ─────────────────────────────────────────────────────
 
 const STAFFING_FIRMS = [
@@ -171,7 +305,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       savedAt:  Date.now(),
     };
     chrome.storage.local.set({ [key]: data }, () => {
-      sendResponse({ ok: true });
+      if (chrome.runtime.lastError) {
+        console.error('Resume save error:', chrome.runtime.lastError.message);
+        sendResponse({ ok: false, error: chrome.runtime.lastError.message });
+      } else {
+        sendResponse({ ok: true });
+      }
     });
     return true;
   }
@@ -226,8 +365,56 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const qa          = await getQAAnswers();
       const resumeNames = await getResumeNames();
       const resumeFile  = await getResumeFile(msg.resumeType || 'it-mgmt');
-      sendResponse({ profile, qa, resumeNames, resumeFile });
+      const customQA    = await getCustomQA();
+      const claudeApiKey = await getClaudeApiKey();
+      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, hasClaudeKey: !!claudeApiKey });
     })();
+    return true;
+  }
+
+  // ── Fuzzy match a question label to a known answer key ───────────────────
+  if (msg.type === 'MATCH_QUESTION') {
+    const match = matchQuestionToKey(msg.question);
+    sendResponse(match);
+    return false;
+  }
+
+  // ── Ask Claude API for an answer to an unknown question ──────────────────
+  if (msg.type === 'ASK_CLAUDE') {
+    (async () => {
+      const profile = await getProfile();
+      const qa      = await getQAAnswers();
+      const answer  = await askClaude(msg.question, profile, qa);
+      sendResponse({ answer });
+    })();
+    return true;
+  }
+
+  // ── Save custom Q&A pairs ────────────────────────────────────────────────
+  if (msg.type === 'SAVE_CUSTOM_QA') {
+    chrome.storage.local.set({ customQA: msg.pairs }, () => {
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  // ── Get custom Q&A pairs ─────────────────────────────────────────────────
+  if (msg.type === 'GET_CUSTOM_QA') {
+    (async () => { sendResponse(await getCustomQA()); })();
+    return true;
+  }
+
+  // ── Save Claude API key ──────────────────────────────────────────────────
+  if (msg.type === 'SAVE_CLAUDE_API_KEY') {
+    chrome.storage.local.set({ claudeApiKey: msg.key }, () => {
+      sendResponse({ ok: true });
+    });
+    return true;
+  }
+
+  // ── Get Claude API key ───────────────────────────────────────────────────
+  if (msg.type === 'GET_CLAUDE_API_KEY') {
+    (async () => { sendResponse({ key: await getClaudeApiKey() }); })();
     return true;
   }
 

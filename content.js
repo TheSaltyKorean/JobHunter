@@ -188,45 +188,154 @@
     log.scrollTop = log.scrollHeight;
   }
 
-  function tryFillInput(selectors, value, label, log) {
+  // ── Smart Form Scanner ────────────────────────────────────────────────────
+  // Walks the DOM and finds every fillable field along with its "question" label
+  function extractFieldLabel(el) {
+    // 1. Explicit <label for="...">
+    if (el.id) {
+      const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
+      if (label?.innerText?.trim()) return label.innerText.trim();
+    }
+    // 2. Wrapping <label>
+    const parentLabel = el.closest('label');
+    if (parentLabel?.innerText?.trim()) return parentLabel.innerText.trim();
+    // 3. aria-label / aria-labelledby
+    if (el.getAttribute('aria-label')) return el.getAttribute('aria-label').trim();
+    const labelledBy = el.getAttribute('aria-labelledby');
+    if (labelledBy) {
+      const parts = labelledBy.split(/\s+/).map(id => document.getElementById(id)?.innerText).filter(Boolean);
+      if (parts.length) return parts.join(' ').trim();
+    }
+    // 4. placeholder
+    if (el.placeholder) return el.placeholder.trim();
+    // 5. name/id as fallback (split camelCase / snake_case)
+    const raw = el.name || el.id || '';
+    if (raw) return raw.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_\-]/g, ' ').trim();
+    // 6. Walk backwards through preceding siblings for text
+    let node = el.previousElementSibling || el.parentElement?.previousElementSibling;
+    for (let i = 0; i < 3 && node; i++) {
+      const text = node.innerText?.trim();
+      if (text && text.length < 200) return text;
+      node = node.previousElementSibling;
+    }
+    return '';
+  }
+
+  function scanFormFields() {
+    const fields = [];
+    // Inputs (text, email, tel, number, url, date, etc.)
+    const textInputTypes = new Set(['text', 'email', 'tel', 'number', 'url', 'date', 'month', 'search', '']);
+    document.querySelectorAll('input, select, textarea').forEach(el => {
+      if (el.closest('#jh-sidebar')) return; // Skip our own UI
+      if (el.type === 'hidden' || el.type === 'submit' || el.type === 'button' || el.type === 'image') return;
+      if (el.type === 'file') return; // Handle file inputs separately
+      if (el.offsetParent === null && el.type !== 'radio' && el.type !== 'checkbox') return; // hidden
+      if (el.readOnly || el.disabled) return;
+
+      const label = extractFieldLabel(el);
+      const tag   = el.tagName.toLowerCase();
+      let fieldType = 'input';
+      if (tag === 'select') fieldType = 'select';
+      else if (tag === 'textarea') fieldType = 'textarea';
+      else if (el.type === 'radio') fieldType = 'radio';
+      else if (el.type === 'checkbox') fieldType = 'checkbox';
+
+      fields.push({ element: el, label, fieldType, filled: !!(el.value?.trim()) });
+    });
+    return fields;
+  }
+
+  // ── Fill a single field with a value ──────────────────────────────────────
+  function fillField(field, value) {
+    const el = field.element;
     if (!value) return false;
-    for (const sel of selectors) {
-      const inputs = document.querySelectorAll(sel);
-      for (const input of inputs) {
-        if (input.offsetParent === null) continue; // hidden
-        if (input.value && input.value.trim()) continue; // already filled
-        input.focus();
-        input.value = value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        input.dispatchEvent(new Event('change', { bubbles: true }));
-        input.blur();
-        logFill(log, `✓ ${label}`, 'success');
+
+    if (field.fieldType === 'select') {
+      return fillSelect(el, value);
+    }
+    if (field.fieldType === 'radio') {
+      return fillRadio(el, value);
+    }
+    if (field.fieldType === 'checkbox') {
+      return fillCheckbox(el, value);
+    }
+    // text input or textarea
+    if (el.value && el.value.trim()) return false; // already filled
+    el.focus();
+    // Use native setter to work with React controlled inputs
+    const nativeSet = Object.getOwnPropertyDescriptor(
+      el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype,
+      'value'
+    )?.set;
+    if (nativeSet) nativeSet.call(el, value);
+    else el.value = value;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true }));
+    el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+    el.blur();
+    return true;
+  }
+
+  function fillSelect(el, matchText) {
+    const lower = matchText.toLowerCase();
+    // Try exact match first, then partial
+    let best = null;
+    let bestScore = 0;
+    for (const opt of el.options) {
+      if (opt.disabled || !opt.value) continue;
+      const optText = opt.text.toLowerCase();
+      const optVal  = opt.value.toLowerCase();
+      if (optText === lower || optVal === lower) { best = opt; bestScore = 1000; break; }
+      // Partial match
+      const words = lower.split(/\s+/);
+      let score = 0;
+      for (const w of words) {
+        if (optText.includes(w)) score += w.length;
+        if (optVal.includes(w)) score += w.length;
+      }
+      // Also check if option text is contained in our answer
+      if (lower.includes(optText) && optText.length > 1) score += optText.length * 2;
+      if (score > bestScore) { bestScore = score; best = opt; }
+    }
+    if (best && bestScore > 1) {
+      el.value = best.value;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }
+    return false;
+  }
+
+  function fillRadio(el, value) {
+    // Find all radios in the same group
+    const name = el.name;
+    if (!name) return false;
+    const radios = document.querySelectorAll(`input[type="radio"][name="${CSS.escape(name)}"]`);
+    const lower = value.toLowerCase();
+    for (const radio of radios) {
+      const label = extractFieldLabel(radio).toLowerCase();
+      const val   = radio.value.toLowerCase();
+      if (label.includes(lower) || val.includes(lower) || lower.includes(label) || lower.includes(val)) {
+        radio.checked = true;
+        radio.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
       }
     }
     return false;
   }
 
-  function tryFillSelect(selectors, matchText, label, log) {
-    if (!matchText) return false;
-    const lower = matchText.toLowerCase();
-    for (const sel of selectors) {
-      const selects = document.querySelectorAll(sel);
-      for (const select of selects) {
-        if (select.offsetParent === null) continue;
-        for (const opt of select.options) {
-          if (opt.text.toLowerCase().includes(lower) || opt.value.toLowerCase().includes(lower)) {
-            select.value = opt.value;
-            select.dispatchEvent(new Event('change', { bubbles: true }));
-            logFill(log, `✓ ${label}: ${opt.text}`, 'success');
-            return true;
-          }
-        }
-      }
+  function fillCheckbox(el, value) {
+    const lower = value.toLowerCase();
+    const shouldCheck = ['yes', 'true', '1', 'agree', 'accept', 'i agree'].some(v => lower.includes(v));
+    if (shouldCheck && !el.checked) {
+      el.checked = true;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
     }
     return false;
   }
 
+  // ── Resume upload ─────────────────────────────────────────────────────────
   async function uploadResume(resumeFile, log) {
     if (!resumeFile || !resumeFile.data) {
       logFill(log, '⚠ No resume file linked for this type', 'warn');
@@ -249,11 +358,10 @@
     const blob = new Blob([ab], { type: 'application/pdf' });
     const file = new File([blob], resumeFile.name, { type: 'application/pdf' });
 
-    // Try each file input (pick the first visible one, or first that accepts PDF)
     for (const input of fileInputs) {
       if (input.offsetParent === null && fileInputs.length > 1) continue;
       const accept = (input.accept || '').toLowerCase();
-      if (accept && !accept.includes('pdf') && !accept.includes('*')) continue;
+      if (accept && !accept.includes('pdf') && !accept.includes('*') && !accept.includes('.pdf')) continue;
 
       const dt = new DataTransfer();
       dt.items.add(file);
@@ -268,6 +376,27 @@
     return false;
   }
 
+  // ── Resolve a matched key to an actual value ──────────────────────────────
+  function resolveValue(key, profile, qa) {
+    // Special profile keys (prefixed with _)
+    const nameParts = (profile.name || '').split(/\s+/);
+    const map = {
+      '_firstName':  nameParts[0] || '',
+      '_lastName':   nameParts.slice(1).join(' ') || '',
+      '_fullName':   profile.name || '',
+      '_email':      profile.email || '',
+      '_phone':      profile.phone || '',
+      '_location':   profile.location || '',
+    };
+    if (key in map) return map[key];
+    // Q&A key
+    if (key in qa) return qa[key] || '';
+    // LinkedIn from profile as fallback
+    if (key === 'linkedinUrl') return qa.linkedinUrl || profile.linkedin || '';
+    return '';
+  }
+
+  // ── Main auto-fill ────────────────────────────────────────────────────────
   async function runAutoFill(resumeType) {
     const section = document.getElementById('jh-fill-status-section');
     const log     = document.getElementById('jh-fill-log');
@@ -283,139 +412,123 @@
       );
     });
 
-    const p  = data.profile || {};
-    const qa = data.qa || {};
+    const profile  = data.profile  || {};
+    const qa       = data.qa       || {};
+    const customQA = data.customQA || [];
 
     // 1. Upload resume
     logFill(log, 'Looking for resume upload field...', 'info');
     await uploadResume(data.resumeFile, log);
 
-    // 2. Fill profile fields
-    logFill(log, 'Filling profile fields...', 'info');
+    // 2. Scan all form fields
+    logFill(log, 'Scanning form fields...', 'info');
+    const fields = scanFormFields();
+    logFill(log, `Found ${fields.length} fillable fields`, 'info');
 
-    // Name fields — try full name, then first/last separately
-    const nameParts = (p.name || '').split(/\s+/);
-    const firstName = nameParts[0] || '';
-    const lastName  = nameParts.slice(1).join(' ') || '';
+    // Track what we've already filled (by radio group name, etc.)
+    const filledGroups = new Set();
+    const unknownFields = [];
+    let filled = 0;
+    let skipped = 0;
 
-    tryFillInput(
-      ['input[name*="first" i][name*="name" i]', 'input[autocomplete="given-name"]',
-       'input[id*="first" i][id*="name" i]', 'input[placeholder*="First" i]'],
-      firstName, 'First name', log
-    );
-    tryFillInput(
-      ['input[name*="last" i][name*="name" i]', 'input[autocomplete="family-name"]',
-       'input[id*="last" i][id*="name" i]', 'input[placeholder*="Last" i]'],
-      lastName, 'Last name', log
-    );
-    tryFillInput(
-      ['input[name*="full" i][name*="name" i]', 'input[autocomplete="name"]',
-       'input[id*="fullName" i]', 'input[placeholder*="Full name" i]'],
-      p.name, 'Full name', log
-    );
+    for (const field of fields) {
+      if (field.filled) { skipped++; continue; }
+      if (field.fieldType === 'radio' && filledGroups.has(field.element.name)) continue;
 
-    // Email
-    tryFillInput(
-      ['input[type="email"]', 'input[name*="email" i]', 'input[autocomplete="email"]',
-       'input[id*="email" i]', 'input[placeholder*="email" i]'],
-      p.email, 'Email', log
-    );
+      const label = field.label;
 
-    // Phone
-    tryFillInput(
-      ['input[type="tel"]', 'input[name*="phone" i]', 'input[autocomplete="tel"]',
-       'input[id*="phone" i]', 'input[placeholder*="phone" i]'],
-      p.phone, 'Phone', log
-    );
+      // A. Check custom Q&A first (user-defined exact/fuzzy matches)
+      let matchedCustom = false;
+      for (const pair of customQA) {
+        if (!pair.question || !pair.answer) continue;
+        const q = pair.question.toLowerCase();
+        const l = label.toLowerCase();
+        // Check if custom question matches the field label
+        if (l.includes(q) || q.includes(l) || fuzzyScore(l, q) > 0.6) {
+          if (fillField(field, pair.answer)) {
+            logFill(log, `✓ ${label} (custom Q&A)`, 'success');
+            filled++;
+            matchedCustom = true;
+            if (field.fieldType === 'radio') filledGroups.add(field.element.name);
+            break;
+          }
+        }
+      }
+      if (matchedCustom) continue;
 
-    // Location / City
-    tryFillInput(
-      ['input[name*="city" i]', 'input[name*="location" i]',
-       'input[id*="city" i]', 'input[id*="location" i]',
-       'input[placeholder*="City" i]', 'input[placeholder*="Location" i]'],
-      p.location, 'Location', log
-    );
+      // B. Fuzzy match against built-in rules (via background)
+      const match = await new Promise(resolve => {
+        chrome.runtime.sendMessage({ type: 'MATCH_QUESTION', question: label }, resolve);
+      });
 
-    // LinkedIn URL
-    tryFillInput(
-      ['input[name*="linkedin" i]', 'input[id*="linkedin" i]',
-       'input[placeholder*="linkedin" i]', 'input[placeholder*="LinkedIn" i]'],
-      p.linkedin || qa.linkedinUrl, 'LinkedIn URL', log
-    );
+      if (match) {
+        const value = resolveValue(match.key, profile, qa);
+        if (value) {
+          if (fillField(field, value)) {
+            logFill(log, `✓ ${label}`, 'success');
+            filled++;
+            if (field.fieldType === 'radio') filledGroups.add(field.element.name);
+            continue;
+          }
+        }
+      }
 
-    // Website / Portfolio
-    tryFillInput(
-      ['input[name*="website" i]', 'input[name*="portfolio" i]',
-       'input[id*="website" i]', 'input[placeholder*="website" i]'],
-      qa.websiteUrl, 'Website', log
-    );
+      // C. Track as unknown for Claude API pass
+      if (label && label.length > 2) {
+        unknownFields.push(field);
+      }
+    }
 
-    // 3. Fill common Q&A fields
-    logFill(log, 'Filling common questions...', 'info');
+    // 3. Claude API pass for unknown fields
+    if (unknownFields.length > 0 && data.hasClaudeKey) {
+      logFill(log, `Asking Claude about ${unknownFields.length} unrecognized fields...`, 'info');
+      for (const field of unknownFields) {
+        try {
+          const resp = await new Promise(resolve => {
+            chrome.runtime.sendMessage(
+              { type: 'ASK_CLAUDE', question: field.label },
+              resolve
+            );
+          });
+          if (resp?.answer) {
+            if (fillField(field, resp.answer)) {
+              logFill(log, `✓ ${field.label} (Claude)`, 'success');
+              filled++;
+              if (field.fieldType === 'radio') filledGroups.add(field.element.name);
+            } else {
+              logFill(log, `⚠ ${field.label} — Claude suggested "${resp.answer}" but couldn't fill`, 'warn');
+            }
+          } else {
+            logFill(log, `⚠ ${field.label} — skipped`, 'warn');
+          }
+        } catch (e) {
+          logFill(log, `⚠ ${field.label} — Claude error`, 'warn');
+        }
+      }
+    } else if (unknownFields.length > 0) {
+      for (const field of unknownFields) {
+        logFill(log, `⚠ ${field.label} — no match (add Claude API key for smart fill)`, 'warn');
+      }
+    }
 
-    // Work authorization
-    tryFillSelect(
-      ['select[name*="auth" i]', 'select[id*="auth" i]', 'select[name*="eligible" i]'],
-      qa.workAuthorization, 'Work authorization', log
-    );
+    logFill(log, `Auto-fill complete! Filled ${filled}, skipped ${skipped} pre-filled.`, 'success');
+  }
 
-    // Sponsorship
-    tryFillSelect(
-      ['select[name*="sponsor" i]', 'select[id*="sponsor" i]'],
-      qa.sponsorship, 'Sponsorship', log
-    );
-    tryFillInput(
-      ['input[name*="sponsor" i]'],
-      qa.sponsorship, 'Sponsorship', log
-    );
-
-    // Salary
-    tryFillInput(
-      ['input[name*="salary" i]', 'input[id*="salary" i]', 'input[name*="compensation" i]',
-       'input[placeholder*="salary" i]', 'input[placeholder*="Salary" i]'],
-      qa.desiredSalary, 'Desired salary', log
-    );
-
-    // Years of experience
-    tryFillInput(
-      ['input[name*="experience" i]', 'input[id*="experience" i]',
-       'input[name*="years" i]', 'input[placeholder*="years" i]'],
-      qa.yearsExperience, 'Years of experience', log
-    );
-
-    // Education
-    tryFillInput(
-      ['input[name*="university" i]', 'input[name*="school" i]',
-       'input[id*="university" i]', 'input[placeholder*="University" i]'],
-      qa.university, 'University', log
-    );
-
-    tryFillSelect(
-      ['select[name*="education" i]', 'select[name*="degree" i]',
-       'select[id*="education" i]', 'select[id*="degree" i]'],
-      qa.educationLevel, 'Education level', log
-    );
-
-    // EEO / voluntary self-identification
-    tryFillSelect(
-      ['select[name*="gender" i]', 'select[id*="gender" i]'],
-      qa.gender, 'Gender', log
-    );
-    tryFillSelect(
-      ['select[name*="veteran" i]', 'select[id*="veteran" i]'],
-      qa.veteranStatus, 'Veteran status', log
-    );
-    tryFillSelect(
-      ['select[name*="disability" i]', 'select[id*="disability" i]'],
-      qa.disabilityStatus, 'Disability status', log
-    );
-    tryFillSelect(
-      ['select[name*="ethnicity" i]', 'select[name*="race" i]',
-       'select[id*="ethnicity" i]', 'select[id*="race" i]'],
-      qa.ethnicity, 'Ethnicity', log
-    );
-
-    logFill(log, 'Auto-fill complete!', 'success');
+  // ── Simple fuzzy score (Jaccard similarity on character bigrams) ──────────
+  function fuzzyScore(a, b) {
+    if (!a || !b) return 0;
+    const bigrams = (s) => {
+      const set = new Set();
+      const lower = s.toLowerCase().replace(/[^a-z0-9]/g, '');
+      for (let i = 0; i < lower.length - 1; i++) set.add(lower.slice(i, i + 2));
+      return set;
+    };
+    const setA = bigrams(a);
+    const setB = bigrams(b);
+    if (setA.size === 0 || setB.size === 0) return 0;
+    let intersection = 0;
+    for (const bg of setA) { if (setB.has(bg)) intersection++; }
+    return intersection / (setA.size + setB.size - intersection);
   }
 
   // ── Main init ──────────────────────────────────────────────────────────────

@@ -294,6 +294,33 @@
     }
     .btn-ghost:hover { background: rgba(255,255,255,0.1); }
 
+    /* ── Custom Q&A pairs ── */
+    .custom-qa-list { display: flex; flex-direction: column; gap: 10px; }
+    .custom-qa-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .custom-qa-row .field { flex: 1; }
+    .custom-qa-remove {
+      flex-shrink: 0;
+      background: rgba(239,68,68,0.1);
+      color: var(--red);
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      width: 30px;
+      height: 30px;
+      cursor: pointer;
+      margin-top: 22px;
+      transition: background 0.15s;
+    }
+    .custom-qa-remove:hover { background: rgba(239,68,68,0.2); }
+
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -571,6 +598,51 @@
       <div class="card-footer">
         <span class="saved-msg" id="qa-saved">&#10003; Answers saved</span>
         <button class="btn btn-primary" id="save-qa">Save Answers</button>
+      </div>
+    </div>
+
+    <!-- Custom Q&A Pairs card -->
+    <div class="card">
+      <div class="card-title">Custom Q&A Pairs</div>
+      <div class="card-subtitle">
+        Add your own question-answer pairs for application fields that aren't covered above.
+        These are matched using fuzzy text matching against form labels. Add as many as you need.
+      </div>
+
+      <div id="custom-qa-list" class="custom-qa-list"></div>
+
+      <button class="btn btn-ghost" id="add-custom-qa" style="margin-top: 12px;">+ Add Q&A Pair</button>
+
+      <div class="card-footer">
+        <span class="saved-msg" id="custom-qa-saved">&#10003; Custom Q&A saved</span>
+        <button class="btn btn-primary" id="save-custom-qa">Save Custom Q&A</button>
+      </div>
+    </div>
+
+    <!-- Claude API card -->
+    <div class="card">
+      <div class="card-title">Claude AI Integration</div>
+      <div class="card-subtitle">
+        When Auto-Fill encounters a question it can't match, Claude AI will analyze the question and generate
+        an appropriate answer based on your profile. Requires an Anthropic API key.
+      </div>
+
+      <div class="form-grid">
+        <div class="field full">
+          <label class="field-label">Anthropic API Key</label>
+          <input class="field-input" id="claude-api-key" type="password" placeholder="sk-ant-api03-...">
+        </div>
+      </div>
+
+      <div class="detection-hint" style="margin-top: 12px;">
+        <strong>How it works:</strong> During auto-fill, any form field that doesn't match a built-in rule
+        or custom Q&A pair is sent to Claude with your profile context. Claude generates a concise answer
+        to fill the field. Without an API key, unrecognized fields are simply skipped.
+      </div>
+
+      <div class="card-footer">
+        <span class="saved-msg" id="claude-saved">&#10003; API key saved</span>
+        <button class="btn btn-primary" id="save-claude-key">Save API Key</button>
       </div>
     </div>
 

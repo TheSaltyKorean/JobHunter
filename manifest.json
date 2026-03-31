@@ -5,6 +5,7 @@
   "description": "Save jobs, auto-fill applications, and track every stage of your job search — across LinkedIn, Indeed, Workday, Greenhouse, Lever, and more.",
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "tabs",
     "activeTab",
     "scripting",

@@ -143,6 +143,74 @@ for (const type of RESUME_TYPES) {
   });
 }
 
+// ── Custom Q&A pair management ───────────────────────────────────────────
+function loadCustomQA() {
+  chrome.runtime.sendMessage({ type: 'GET_CUSTOM_QA' }, pairs => {
+    const list = document.getElementById('custom-qa-list');
+    list.innerHTML = '';
+    (pairs || []).forEach(pair => addCustomQARow(pair.question, pair.answer));
+  });
+}
+
+function addCustomQARow(question = '', answer = '') {
+  const list = document.getElementById('custom-qa-list');
+  const row = document.createElement('div');
+  row.className = 'custom-qa-row';
+  row.innerHTML = `
+    <div class="field">
+      <label class="field-label">Question / Label Text</label>
+      <input class="field-input custom-qa-q" type="text" value="${escapeHtml(question)}" placeholder="e.g. How did you hear about us?">
+    </div>
+    <div class="field">
+      <label class="field-label">Answer</label>
+      <input class="field-input custom-qa-a" type="text" value="${escapeHtml(answer)}" placeholder="e.g. LinkedIn">
+    </div>
+    <button class="custom-qa-remove" title="Remove">✕</button>
+  `;
+  row.querySelector('.custom-qa-remove').addEventListener('click', () => row.remove());
+  list.appendChild(row);
+}
+
+function escapeHtml(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function collectCustomQA() {
+  const rows = document.querySelectorAll('.custom-qa-row');
+  const pairs = [];
+  rows.forEach(row => {
+    const q = row.querySelector('.custom-qa-q').value.trim();
+    const a = row.querySelector('.custom-qa-a').value.trim();
+    if (q || a) pairs.push({ question: q, answer: a });
+  });
+  return pairs;
+}
+
+document.getElementById('add-custom-qa').addEventListener('click', () => addCustomQARow());
+
+document.getElementById('save-custom-qa').addEventListener('click', () => {
+  const pairs = collectCustomQA();
+  chrome.runtime.sendMessage({ type: 'SAVE_CUSTOM_QA', pairs }, resp => {
+    if (resp?.ok) showSaved('custom-qa-saved');
+  });
+});
+
+// ── Claude API key management ───────────────────────────────────────────
+function loadClaudeKey() {
+  chrome.runtime.sendMessage({ type: 'GET_CLAUDE_API_KEY' }, resp => {
+    if (resp?.key) {
+      document.getElementById('claude-api-key').value = resp.key;
+    }
+  });
+}
+
+document.getElementById('save-claude-key').addEventListener('click', () => {
+  const key = document.getElementById('claude-api-key').value.trim();
+  chrome.runtime.sendMessage({ type: 'SAVE_CLAUDE_API_KEY', key }, resp => {
+    if (resp?.ok) showSaved('claude-saved');
+  });
+});
+
 // ── Save handlers ─────────────────────────────────────────────────────────────
 document.getElementById('save-profile').addEventListener('click', () => {
   const profile = {
@@ -203,3 +271,5 @@ if (dashLink) {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 loadSettings();
+loadCustomQA();
+loadClaudeKey();
