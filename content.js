@@ -756,13 +756,40 @@
     // Reset the set each time fillExperience runs (fresh scan)
     experienceHandledElements = new Set();
 
+    // Walk up DOM ancestors to find a group label containing "From" or "To"
+    // This handles Workday-style split Month/Year fields nested under From*/To* groups
+    function getDateGroupContext(el) {
+      let parent = el.parentElement;
+      for (let depth = 0; depth < 6 && parent; depth++) {
+        // Check for labels, legends, or text nodes in this container
+        const candidates = parent.querySelectorAll(':scope > label, :scope > legend, :scope > div > label, :scope > span, :scope > div > span, :scope > p');
+        for (const c of candidates) {
+          const t = (c.innerText || c.textContent || '').trim().toLowerCase();
+          if (/^from\b/.test(t)) return 'from';
+          if (/^to\b/.test(t))   return 'to';
+        }
+        // Also check the parent's own text (for cases like <div>From *<select>...</div>)
+        const directText = Array.from(parent.childNodes)
+          .filter(n => n.nodeType === 3) // text nodes only
+          .map(n => n.textContent.trim().toLowerCase())
+          .join(' ');
+        if (/^from\b/.test(directText)) return 'from';
+        if (/^to\b/.test(directText))   return 'to';
+        parent = parent.parentElement;
+      }
+      return null;
+    }
+
     // Fill one round of experience fields from the current DOM
     function fillOneEntry(exp) {
       const allFields = scanFormFields();
       const usedFields = new Set();
       let entryFilled = 0;
+      const orphanDateFields = []; // Fields labeled just "Month" or "Year" to resolve later
 
       for (const field of allFields) {
+        // Skip fields already handled by a PREVIOUS entry
+        if (experienceHandledElements.has(field.element)) continue;
         // Allow date fields that have partial/error values to be re-filled
         if (field.filled) {
           const existingVal = (field.element.value || '').trim();
@@ -773,8 +800,16 @@
         const label = field.label.toLowerCase().trim();
         if (!label) continue;
 
+        // Collect orphan "Month" / "Year" fields for date group resolution
+        if (/^month\s*\*?$/.test(label) || /^year\s*\*?$/.test(label)) {
+          orphanDateFields.push(field);
+          continue;
+        }
+
+        let matched = false;
         for (const [key, rx] of Object.entries(expFieldPatterns)) {
           if (!rx.test(label)) continue;
+          matched = true;
 
           console.log(`JobHunter: Experience field matched — label="${label}" key=${key} type=${field.element.type} existingValue="${field.element.value || ''}"`);
           // Mark as handled by experience filler regardless of whether we can fill it
@@ -821,7 +856,6 @@
             // For date fields, clear partial/error values first (Workday pre-fills "/2026" etc.)
             if ((key === 'startDate' || key === 'endDate') && field.element.value) {
               const existing = field.element.value.trim();
-              // If existing value looks incomplete/error (e.g. "/2026", "Error:", "MM/YYYY")
               if (/^\/|error|^mm|^dd|^yyyy/i.test(existing) || existing.length < 3) {
                 const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
                 if (nativeSet) nativeSet.call(field.element, '');
@@ -849,6 +883,57 @@
           break; // matched a pattern, move to next field
         }
       }
+
+      // ── Second pass: resolve orphan "Month" / "Year" fields by DOM context ──
+      // Workday and similar ATS split dates into separate Month + Year fields
+      // under a parent labeled "From *" or "To *"
+      for (const field of orphanDateFields) {
+        if (usedFields.has(field.element)) continue;
+        const label = field.label.toLowerCase().trim();
+        const isMonth = /^month/.test(label);
+        const isYear  = /^year/.test(label);
+        const context = getDateGroupContext(field.element);
+
+        console.log(`JobHunter: Orphan date field — label="${label}" context="${context}" type=${field.element.type}`);
+        experienceHandledElements.add(field.element);
+
+        let value = '';
+        if (context === 'from') {
+          if (isMonth && exp.startMonth) {
+            // For selects, use month number or name depending on option values
+            if (field.fieldType === 'select') {
+              value = exp.startMonth ? MONTH_NAMES[parseInt(exp.startMonth)] : '';
+            } else {
+              value = String(exp.startMonth).padStart(2, '0');
+            }
+          }
+          if (isYear) value = exp.startYear || '';
+        } else if (context === 'to') {
+          if (exp.current) {
+            value = ''; // skip end date for current job
+          } else {
+            if (isMonth && exp.endMonth) {
+              if (field.fieldType === 'select') {
+                value = exp.endMonth ? MONTH_NAMES[parseInt(exp.endMonth)] : '';
+              } else {
+                value = String(exp.endMonth).padStart(2, '0');
+              }
+            }
+            if (isYear) value = exp.endYear || '';
+          }
+        }
+
+        if (value && fillField(field, value)) {
+          logFill(log, `✓ Experience: ${context || '?'} ${label} → ${value}`, 'success');
+          usedFields.add(field.element);
+          entryFilled++;
+        } else if (!value && context) {
+          logFill(log, `⚠ Experience: ${context} ${label} — no data to fill`, 'warn');
+        } else if (!context) {
+          logFill(log, `⚠ Experience: ${label} — could not determine From/To context`, 'warn');
+        }
+      }
+
       return entryFilled;
     }
 
@@ -1061,7 +1146,7 @@
       // Also skip experience/education-like labels by text pattern (catches fields from
       // entries we didn't have data for, or labels with error text appended)
       const labelFirst = label.split('\n')[0].trim(); // strip error messages after newline
-      if (/^(from|to|job\s*title|company|employer|role\s*desc|responsibilities|i currently work|school|university|degree|field of study|major|gpa)\b/i.test(labelFirst)) {
+      if (/^(from|to|month|year|job\s*title|company|employer|role\s*desc|responsibilities|i currently work|school|university|degree|field of study|major|gpa)\b/i.test(labelFirst)) {
         skipped++; continue;
       }
 
