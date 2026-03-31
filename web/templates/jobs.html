@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+{% block title %}Jobs{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Jobs</h1>
+  <div class="header-actions">
+    <a href="{{ url_for('search') }}" class="btn btn-primary">&#x1F50D; New Search</a>
+    <a href="{{ url_for('add_url') }}" class="btn btn-secondary">+ Add URL</a>
+    <button class="btn btn-success" onclick="runQueue()">&#x25B6; Apply Queue ({{ stats.queued }})</button>
+  </div>
+</div>
+
+<!-- Filter Tabs -->
+<div class="filter-tabs">
+  <a href="{{ url_for('jobs') }}" class="tab {% if not current_status %}active{% endif %}">All ({{ stats.total }})</a>
+  <a href="{{ url_for('jobs', status='new') }}" class="tab {% if current_status=='new' %}active{% endif %}">New ({{ stats.new }})</a>
+  <a href="{{ url_for('jobs', status='queued') }}" class="tab {% if current_status=='queued' %}active{% endif %}">Queued ({{ stats.queued }})</a>
+  <a href="{{ url_for('jobs', status='applied') }}" class="tab {% if current_status=='applied' %}active{% endif %}">Applied ({{ stats.applied }})</a>
+  <a href="{{ url_for('jobs', status='interview') }}" class="tab {% if current_status=='interview' %}active{% endif %}">&#x1F3AF; Interview ({{ stats.interview }})</a>
+  <a href="{{ url_for('jobs', status='offer') }}" class="tab {% if current_status=='offer' %}active{% endif %}">&#x1F389; Offer ({{ stats.offer }})</a>
+  <a href="{{ url_for('jobs', status='rejected') }}" class="tab {% if current_status=='rejected' %}active{% endif %}">Rejected ({{ stats.rejected }})</a>
+  <a href="{{ url_for('jobs', status='ghosted') }}" class="tab {% if current_status=='ghosted' %}active{% endif %}">Ghosted ({{ stats.ghosted }})</a>
+  <a href="{{ url_for('jobs', status='skipped') }}" class="tab {% if current_status=='skipped' %}active{% endif %}">Skipped ({{ stats.skipped }})</a>
+  <a href="{{ url_for('jobs', status='failed') }}" class="tab {% if current_status=='failed' %}active{% endif %}">Failed ({{ stats.failed }})</a>
+</div>
+
+<div class="card">
+  {% if jobs %}
+    <table class="jobs-table full-table" id="jobs-table">
+      <thead>
+        <tr>
+          <th class="sortable" data-col="0" data-type="text">Title &#x21C5;</th>
+          <th class="sortable" data-col="1" data-type="text">Company &#x21C5;</th>
+          <th class="sortable" data-col="2" data-type="text">Location &#x21C5;</th>
+          <th class="sortable" data-col="3" data-type="text">Platform &#x21C5;</th>
+          <th class="sortable" data-col="4" data-type="num">Match &#x21C5;</th>
+          <th class="sortable" data-col="5" data-type="text">Resume &#x21C5;</th>
+          <th class="sortable" data-col="6" data-type="text">Status &#x21C5;</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr id="row-{{ job.id }}" class="{% if job.is_indian_firm %}row-orange{% endif %}">
+          <td>
+            <a href="{{ url_for('job_detail', job_id=job.id) }}">{{ job.title }}</a>
+            {% if job.is_indian_firm %}
+              <span class="badge badge-orange" title="{{ job.flagged_reason }}">&#x1F1EE;&#x1F1F3;</span>
+            {% endif %}
+          </td>
+          <td>{{ job.company }}</td>
+          <td>{{ job.location or '–' }}</td>
+          <td><span class="badge badge-{{ job.platform }}">{{ job.platform or '–' }}</span></td>
+          <td>
+            <span class="match-badge {% if job.match_score >= 70 %}match-high{% elif job.match_score >= 50 %}match-med{% else %}match-low{% endif %}">
+              {{ job.match_score|int }}%
+            </span>
+          </td>
+          <td><span class="badge badge-resume">{{ job.resume_type or '–' }}</span></td>
+          <td><span class="status-badge status-{{ job.status }}">{{ job.status }}</span></td>
+          <td class="action-cell">
+            {% if job.status in ('new', 'failed') %}
+              <form method="POST" action="{{ url_for('queue_job', job_id=job.id) }}" style="display:inline">
+                <button class="btn-sm btn-green">Queue</button>
+              </form>
+              <button class="btn-sm btn-blue" onclick="applyNow({{ job.id }})">Apply Now</button>
+              <button class="btn-sm btn-red" onclick="dismiss({{ job.id }})">Dismiss</button>
+            {% elif job.status == 'queued' %}
+              <button class="btn-sm btn-blue" onclick="applyNow({{ job.id }})">Apply Now</button>
+              <button class="btn-sm btn-red" onclick="dismiss({{ job.id }})">Dismiss</button>
+            {% elif job.status == 'applied' %}
+              <button class="btn-sm btn-green" onclick="updateStatus({{ job.id }}, 'interview')">Got Interview</button>
+              <button class="btn-sm btn-red" onclick="updateStatus({{ job.id }}, 'rejected')">Rejected</button>
+              <button class="btn-sm btn-gray" onclick="updateStatus({{ job.id }}, 'ghosted')">Ghosted</button>
+            {% elif job.status == 'interview' %}
+              <button class="btn-sm btn-green" onclick="updateStatus({{ job.id }}, 'offer')">Got Offer!</button>
+              <button class="btn-sm btn-red" onclick="updateStatus({{ job.id }}, 'rejected')">Rejected</button>
+            {% elif job.status == 'skipped' %}
+              <button class="btn-sm btn-green" onclick="restore({{ job.id }})">Restore</button>
+            {% endif %}
+            {% if job.url %}
+              <a href="{{ job.url }}" target="_blank" class="btn-sm btn-gray">View &#x2197;</a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <!-- Pagination -->
+    <div class="pagination">
+      {% if page > 1 %}
+        <a href="{{ url_for('jobs', status=current_status, page=page-1) }}" class="btn-sm">&#x2190; Prev</a>
+      {% endif %}
+      <span>Page {{ page }}</span>
+      {% if jobs|length == 20 %}
+        <a href="{{ url_for('jobs', status=current_status, page=page+1) }}" class="btn-sm">Next &#x2192;</a>
+      {% endif %}
+    </div>
+
+  {% else %}
+    <p class="empty-state">
+      No jobs found.
+      {% if current_status %}
+        <a href="{{ url_for('jobs') }}">View all jobs</a> or
+      {% endif %}
+      <a href="{{ url_for('search') }}">run a search</a>.
+    </p>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<style>
+.sortable { cursor: pointer; user-select: none; }
+.sortable:hover { background: rgba(255,255,255,0.1); }
+</style>
+<script>
+// Column sorting
+(function() {
+  const table = document.getElementById('jobs-table');
+  if (!table) return;
+  let sortCol = -1, sortAsc = true;
+  table.querySelectorAll('th.sortable').forEach(th => {
+    th.addEventListener('click', () => {
+      const col = parseInt(th.dataset.col);
+      const type = th.dataset.type;
+      if (sortCol === col) { sortAsc = !sortAsc; } else { sortCol = col; sortAsc = true; }
+      const tbody = table.querySelector('tbody');
+      const rows = Array.from(tbody.querySelectorAll('tr'));
+      rows.sort((a, b) => {
+        let va = a.cells[col].textContent.trim();
+        let vb = b.cells[col].textContent.trim();
+        if (type === 'num') { va = parseFloat(va) || 0; vb = parseFloat(vb) || 0; }
+        else { va = va.toLowerCase(); vb = vb.toLowerCase(); }
+        if (va < vb) return sortAsc ? -1 : 1;
+        if (va > vb) return sortAsc ? 1 : -1;
+        return 0;
+      });
+      rows.forEach(r => tbody.appendChild(r));
+    });
+  });
+})();
+
+function applyNow(id) {
+  fetch(`/jobs/${id}/apply`, {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+      showToast(d.message || d.error, d.error ? 'error' : 'success');
+      // Reload sooner for manual (Indeed) since there's nothing to wait for
+      setTimeout(() => location.reload(), d.manual ? 500 : 2000);
+    });
+}
+
+function dismiss(id) {
+  // Instant dismiss — fade the row out, no confirmation needed
+  const row = document.getElementById('row-' + id);
+  if (row) row.style.opacity = '0.3';
+  fetch(`/api/job/${id}/status`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: 'skipped', notes: 'Manually dismissed'})
+  }).then(() => { if (row) row.remove(); });
+}
+
+function restore(id) {
+  fetch(`/api/job/${id}/status`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: 'new'})
+  }).then(() => location.reload());
+}
+
+function updateStatus(id, status) {
+  const labels = {interview: 'Mark as got interview?', rejected: 'Mark as rejected?', offer: 'Mark as got offer?', ghosted: 'Mark as ghosted (no response)?'};
+  inlineConfirm(labels[status] || `Change status to ${status}?`).then(ok => {
+    if (!ok) return;
+    fetch(`/api/job/${id}/status`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({status: status})
+    }).then(() => location.reload());
+  });
+}
+
+function runQueue() {
+  inlineConfirm('Apply to all queued jobs now?').then(ok => {
+    if (!ok) return;
+    fetch('/api/run-queue', {method: 'POST'})
+      .then(r => r.json())
+      .then(d => showToast(d.message, 'success'));
+  });
+}
+</script>
+{% endblock %}

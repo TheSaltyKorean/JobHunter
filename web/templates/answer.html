@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Submit Answer{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Submit Claude Answer</h1>
+</div>
+
+{% if pending.question %}
+<div class="card" style="max-width: 700px; border: 2px solid #f6ad55;">
+  <div class="alert alert-warning" style="margin-bottom: 16px;">
+    &#x231B; The application is waiting for your answer!
+  </div>
+
+  <h3>Question</h3>
+  <div class="pending-question">{{ pending.question }}</div>
+
+  {% if pending.prompt_copied %}
+  <div class="steps-box">
+    <strong>Steps:</strong>
+    <ol>
+      <li>Claude.ai should have opened in your browser</li>
+      <li>Press <kbd>Ctrl+V</kbd> to paste the pre-loaded prompt</li>
+      <li>Copy Claude's answer</li>
+      <li>Paste it below and click Submit</li>
+    </ol>
+    <a href="https://claude.ai/new" target="_blank" class="btn btn-secondary" style="margin-top: 8px;">Open Claude.ai →</a>
+  </div>
+  {% endif %}
+
+  <form method="POST" style="margin-top: 16px;">
+    <input type="hidden" name="hash" value="{{ pending.hash }}">
+    <div class="form-group">
+      <label>Claude's Answer</label>
+      <textarea name="answer" rows="6" class="form-control" required
+                placeholder="Paste Claude's answer here..."></textarea>
+    </div>
+    <button type="submit" class="btn btn-success">&#x2713; Submit Answer</button>
+  </form>
+</div>
+
+{% else %}
+<div class="card" style="max-width: 700px;">
+  <p class="empty-state">No pending questions right now. This page will show a question when the app needs your input during an application.</p>
+
+  <h3 style="margin-top: 24px;">How Clipboard Mode Works</h3>
+  <ol>
+    <li>When a screening question can't be auto-answered, the app pauses and opens Claude.ai</li>
+    <li>A pre-filled prompt with your resume context + the question is copied to your clipboard</li>
+    <li>You get a desktop notification directing you here</li>
+    <li>You paste into Claude.ai, get the answer, and submit it on this page</li>
+    <li>The application continues automatically</li>
+  </ol>
+</div>
+
+  <div class="info-box" style="margin-top: 16px;">
+    phone <strong>Tip:</strong> Install <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank">Claude Code</a> to skip this step entirely – the app will answer questions automatically.
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh if there's a pending question
+{% if pending.question %}
+setTimeout(() => location.reload(), 30000);
+{% endif %}
+</script>
+{% endblock %}

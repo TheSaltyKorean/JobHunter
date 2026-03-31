@@ -1,0 +1,608 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Settings</h1>
+</div>
+
+<!-- Claude Status -->
+<div class="status-banner {% if claude_status.available %}banner-green{% else %}banner-yellow{% endif %}" style="margin-bottom: 20px;">
+  {% if claude_status.available %}
+    &#x2705; <strong>Claude CLI detected</strong> ({{ claude_status.version }}) – Q&A is fully automated
+  {% else %}
+    &#x26A0;&#xFE0F; <strong>Claude CLI not found</strong> –
+    <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank">Install Claude Code</a>
+    for full Q&A automation, or enter an Anthropic API key below.
+  {% endif %}
+</div>
+
+<form method="POST">
+  <div class="settings-grid">
+
+    <!-- Job Search -->
+    <div class="card">
+      <h3>Job Search</h3>
+      <div class="form-group">
+        <label>Default Location</label>
+        <input type="text" name="default_location" class="form-control"
+               value="{{ settings.get('default_location', 'Austin, TX') }}">
+      </div>
+      <div class="form-group">
+        <label>Default Job Title Keywords (one per line)</label>
+        <textarea name="default_keywords" rows="8" class="form-control">{{ settings.get('default_keywords_text', 'IT Director\nVP of IT\nHead of Cloud\nDirector of Infrastructure\nCloud Manager\nDirector of Technology\nVP of Technology\nIT Manager\nEngineering Manager') }}</textarea>
+      </div>
+      <div class="form-group">
+        <label>Minimum Match Score (%)</label>
+        <input type="number" name="min_match_score" class="form-control" min="0" max="100"
+               value="{{ settings.get('min_match_score', '50') }}">
+      </div>
+      <div class="form-group">
+        <label>Auto-Search Interval (hours, 0 = off)</label>
+        <input type="number" name="search_interval_hours" class="form-control" min="0"
+               value="{{ settings.get('search_interval_hours', '6') }}">
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" name="auto_apply" value="true"
+                 {% if settings.get('auto_apply') == 'true' %}checked{% endif %}>
+          Auto-apply to all matching jobs (no review)
+        </label>
+        <small>&#x26A0;&#xFE0F; Use carefully! Enables fully automatic applications without review.</small>
+      </div>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" name="debug_mode" value="true"
+                 {% if settings.get('debug_mode', 'true') == 'true' %}checked{% endif %}>
+          Debug mode (show browser window during applications)
+        </label>
+        <small>When enabled, Playwright opens a visible browser so you can watch it work. Disable for headless/background mode.</small>
+      </div>
+    </div>
+
+    <!-- Salary -->
+    <div class="card">
+      <h3>Compensation</h3>
+      <div class="form-group">
+        <label>Target Salary ($)</label>
+        <input type="number" name="salary_expectation" class="form-control"
+               value="{{ settings.get('salary_expectation', '180000') }}">
+      </div>
+      <div class="form-group">
+        <label>Minimum Acceptable Salary ($)</label>
+        <input type="number" name="salary_min" class="form-control"
+               value="{{ settings.get('salary_min', '150000') }}">
+      </div>
+    </div>
+
+    <!-- LinkedIn -->
+    <div class="card">
+      <h3>LinkedIn</h3>
+      <div class="form-group">
+        <label>LinkedIn Session Cookie (<code>li_at</code>)</label>
+        <input type="password" name="linkedin_session_cookie" class="form-control"
+               value="{{ settings.get('linkedin_session_cookie', '') }}"
+               placeholder="Get from browser dev tools → Cookies → li_at">
+        <small>Required for LinkedIn job searching. Find it in Chrome DevTools → Application → Cookies → linkedin.com → li_at</small>
+      </div>
+    </div>
+
+    <!-- Claude / AI -->
+    <div class="card">
+      <h3>Claude / AI Settings</h3>
+      <div class="form-group">
+        <label>
+          <input type="checkbox" name="use_claude_cli" value="true"
+                 {% if settings.get('use_claude_cli', 'true') == 'true' %}checked{% endif %}>
+          Use Claude CLI if available (recommended)
+        </label>
+      </div>
+      <div class="form-group">
+        <label>Anthropic API Key (optional)</label>
+        <input type="password" name="anthropic_api_key" class="form-control"
+               value="{{ settings.get('anthropic_api_key', '') }}"
+               placeholder="sk-ant-...">
+        <small>Backup if Claude CLI is not installed. Get at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a></small>
+      </div>
+    </div>
+
+    <!-- Email / Notifications -->
+    <div class="card">
+      <h3>Email &amp; Notifications</h3>
+
+      <div class="form-group">
+        <label>
+          <input type="checkbox" name="email_notifications" value="true"
+                 {% if settings.get('email_notifications', 'true') == 'true' %}checked{% endif %}>
+          Send email notifications
+        </label>
+      </div>
+
+      <div class="quick-presets">
+        <strong>Quick preset:</strong>
+        <button type="button" onclick="applyPreset('outlook')">Outlook/Live</button>
+        <button type="button" onclick="applyPreset('gmail')">Gmail</button>
+      </div>
+
+      <div class="form-group">
+        <label>IMAP Host (for reading job alert emails)</label>
+        <input type="text" name="imap_host" id="imap_host" class="form-control"
+               value="{{ settings.get('imap_host', '') }}" placeholder="outlook.office365.com">
+      </div>
+      <div class="form-group">
+        <label>Email Address</label>
+        <input type="email" name="imap_user" id="imap_user" class="form-control"
+               value="{{ settings.get('imap_user', '') }}" placeholder="randy.walker@live.com">
+      </div>
+      <div class="form-group">
+        <label>Email Password / App Password</label>
+        <input type="password" name="imap_pass" id="imap_pass" class="form-control"
+               value="{{ settings.get('imap_pass', '') }}">
+        <small>Use an <a href="https://support.microsoft.com/en-us/account-billing/how-to-get-and-use-app-passwords-5896ed9b-4263-e681-128a-a6f2979a7944" target="_blank">App Password</a> for Outlook, or enable "Less secure apps" / create App Password for Gmail.</small>
+      </div>
+      <div class="form-group">
+        <label>SMTP Host (for sending notifications)</label>
+        <input type="text" name="smtp_host" id="smtp_host" class="form-control"
+               value="{{ settings.get('smtp_host', '') }}" placeholder="smtp.office365.com">
+      </div>
+      <div class="form-group">
+        <label>SMTP Port</label>
+        <input type="number" name="smtp_port" id="smtp_port" class="form-control"
+               value="{{ settings.get('smtp_port', '587') }}">
+      </div>
+      <div class="form-group">
+        <label>SMTP Username</label>
+        <input type="text" name="smtp_user" id="smtp_user" class="form-control"
+               value="{{ settings.get('smtp_user', '') }}">
+      </div>
+      <div class="form-group">
+        <label>SMTP Password</label>
+        <input type="password" name="smtp_pass" id="smtp_pass" class="form-control"
+               value="{{ settings.get('smtp_pass', '') }}">
+      </div>
+    </div>
+
+  </div><!-- /settings-grid -->
+
+  <div style="margin-top: 20px;">
+    <button type="submit" class="btn btn-primary btn-lg">&#x1F4BE; Save Settings</button>
+  </div>
+</form>
+
+<!-- Resume Management -->
+<div style="margin-top: 32px;">
+  <h2>Resumes &amp; Routing</h2>
+  <p style="color:#718096; margin-bottom:16px;">
+    Upload your resume PDFs and assign a key name to each. Routing rules below control which resume is sent for each job.
+  </p>
+
+  <div class="card">
+    <h4>Your Resumes</h4>
+    <table class="jobs-table full-table" id="resume-table">
+      <thead><tr><th>Key</th><th>File</th><th style="width:140px;">Actions</th></tr></thead>
+      <tbody>
+        {% for key, path in resume_files.items() %}
+        <tr data-key="{{ key }}">
+          <td><strong class="resume-key-label">{{ key }}</strong></td>
+          <td style="font-family:monospace;font-size:0.85rem">{{ path.split('/')[-1] if '/' in path else path }}</td>
+          <td>
+            <button class="btn-sm btn-blue" onclick="renameResume('{{ key }}')">Rename</button>
+            <button class="btn-sm btn-red" onclick="deleteResume('{{ key }}')">Delete</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div style="margin-top:16px; border-top:1px solid #334155; padding-top:16px;">
+      <h4>Upload Resume</h4>
+      <div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+        <div class="form-group" style="margin:0">
+          <label>Key Name</label>
+          <input type="text" id="upload-key" class="form-control" placeholder="e.g. executive, cloud, contract" style="width:200px;">
+          <small style="color:#718096;">Leave blank to auto-derive from filename</small>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>PDF File</label>
+          <input type="file" id="upload-file" accept=".pdf" class="form-control" style="width:280px;">
+        </div>
+        <button class="btn btn-primary" onclick="uploadResume()">Upload</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h4>Resume Routing Rules <small style="color:#718096">(order matters &mdash; first match wins)</small></h4>
+    <div id="routing-rules">
+      {% for rule in resume_routing %}
+      <div class="routing-rule" style="border:1px solid #334155;border-radius:8px;padding:12px 16px;margin-bottom:10px;background:#1a2332;">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <div>
+            <label style="font-size:0.8rem;color:#718096;">Resume</label><br>
+            <select class="form-control rule-resume" style="width:150px;">
+              {% for key in resume_files %}
+              <option value="{{ key }}" {% if rule.resume == key %}selected{% endif %}>{{ key }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          {% if rule.match == 'indian_firm' %}
+          <div style="flex:1;">
+            <label style="font-size:0.8rem;color:#718096;">Match Type</label><br>
+            <span class="badge badge-orange" style="font-size:0.9rem">Auto: Indian IT Staffing Firm</span>
+            <input type="hidden" class="rule-type" value="indian_firm">
+          </div>
+          {% elif rule.default %}
+          <div style="flex:1;">
+            <label style="font-size:0.8rem;color:#718096;">Match Type</label><br>
+            <span class="badge badge-resume" style="font-size:0.9rem">Default fallback</span>
+            <input type="hidden" class="rule-type" value="default">
+          </div>
+          {% else %}
+          <div style="flex:1;">
+            <label style="font-size:0.8rem;color:#718096;">Title patterns (one per line, regex)</label><br>
+            <textarea class="form-control rule-titles" rows="3" style="font-family:monospace;font-size:0.85rem;">{{ rule.titles | join('\n') }}</textarea>
+            <input type="hidden" class="rule-type" value="titles">
+          </div>
+          {% endif %}
+          <div>
+            <button class="btn-sm btn-red" onclick="this.closest('.routing-rule').remove()" style="margin-top:16px;">&#x2715;</button>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <div style="margin-top:12px;display:flex;gap:8px;">
+      <button class="btn btn-secondary" onclick="addRoutingRule()">+ Add Title Rule</button>
+      <button class="btn btn-primary" onclick="saveRouting()">Save Routing</button>
+    </div>
+  </div>
+</div>
+
+<!-- ATS Credentials (separate from main settings form) -->
+<div style="margin-top: 32px;">
+  <h2>ATS Platform Credentials</h2>
+  <p style="color:#718096; margin-bottom:16px;">
+    Stored per-platform. Passwords are auto-generated when the app creates a new account on an ATS site.
+    You can also set them manually below.
+  </p>
+
+  <div class="card">
+    <table class="jobs-table full-table" id="creds-table">
+      <thead>
+        <tr><th>Platform</th><th>Email</th><th>Username</th><th>Password</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for key, cred in ats_credentials.items() %}
+        <tr>
+          <td><strong>{{ cred.platform_name }}</strong></td>
+          <td>{{ cred.email }}</td>
+          <td>{{ cred.username or '(same as email)' }}</td>
+          <td>
+            {% if cred.password_set %}
+              <span class="password-masked" id="pw-{{ key }}">********</span>
+              <button class="btn-sm btn-gray" onclick="togglePw('{{ key }}')">Show</button>
+            {% else %}
+              <em>Not set</em>
+            {% endif %}
+          </td>
+          <td>
+            <button class="btn-sm btn-blue" onclick="editCred('{{ key }}')">Edit</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div style="margin-top:16px;">
+      <h4>Add Platform</h4>
+      <div style="display:flex; gap:8px; align-items:end; flex-wrap:wrap;">
+        <div class="form-group" style="margin:0">
+          <label>Platform</label>
+          <select id="new-platform" class="form-control">
+            <option value="workday">Workday</option>
+            <option value="successfactors">SAP SuccessFactors</option>
+            <option value="taleo">Oracle/Taleo</option>
+            <option value="greenhouse">Greenhouse</option>
+            <option value="lever">Lever</option>
+            <option value="icims">iCIMS</option>
+            <option value="smartrecruiters">SmartRecruiters</option>
+            <option value="jobvite">Jobvite</option>
+            <option value="bamboohr">BambooHR</option>
+            <option value="ashby">Ashby</option>
+            <option value="linkedin">LinkedIn</option>
+            <option value="indeed">Indeed</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Email</label>
+          <input type="email" id="new-email" class="form-control" placeholder="your@email.com">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Username (if different from email)</label>
+          <input type="text" id="new-username" class="form-control" placeholder="Leave blank to use email">
+        </div>
+        <div class="form-group" style="margin:0">
+          <label>Password (leave blank to auto-generate)</label>
+          <input type="text" id="new-password" class="form-control" placeholder="Auto-generate if blank">
+        </div>
+        <button class="btn btn-primary" onclick="addCred()">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Generated Accounts Log -->
+  {% if generated_accounts %}
+  <div class="card" style="margin-top:16px;">
+    <h4>Auto-Generated Account Log</h4>
+    <p style="color:#718096; font-size:0.85rem;">Keep this as a reference. Passwords shown in plain text for your records.</p>
+    <table class="jobs-table full-table">
+      <thead><tr><th>Platform</th><th>Email</th><th>Password</th><th>Created</th></tr></thead>
+      <tbody>
+        {% for acct in generated_accounts %}
+        <tr>
+          <td>{{ acct.platform_name }}</td>
+          <td>{{ acct.email }}</td>
+          <td style="font-family:monospace">{{ acct.password }}</td>
+          <td>{{ acct.created[:10] if acct.created else '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+const presets = {
+  outlook: {
+    imap_host: 'outlook.office365.com',
+    smtp_host: 'smtp.office365.com',
+    smtp_port: '587'
+  },
+  gmail: {
+    imap_host: 'imap.gmail.com',
+    smtp_host: 'smtp.gmail.com',
+    smtp_port: '587'
+  }
+};
+
+function applyPreset(name) {
+  const p = presets[name];
+  if (!p) return;
+  document.getElementById('imap_host').value = p.imap_host;
+  document.getElementById('smtp_host').value = p.smtp_host;
+  document.getElementById('smtp_port').value = p.smtp_port;
+}
+
+// ATS Credentials
+const allPasswords = {{ ats_passwords | tojson }};
+
+function togglePw(key) {
+  const el = document.getElementById('pw-' + key);
+  if (el.textContent === '********') {
+    el.textContent = allPasswords[key] || '(unknown)';
+  } else {
+    el.textContent = '********';
+  }
+}
+
+function addCred() {
+  const platform = document.getElementById('new-platform').value;
+  const email = document.getElementById('new-email').value;
+  const username = document.getElementById('new-username') ? document.getElementById('new-username').value : '';
+  const password = document.getElementById('new-password').value;
+  if (!email) { showToast('Enter an email address', 'error'); return; }
+  fetch('/api/ats-credentials', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({platform, email, username, password})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) location.reload();
+    else showToast(d.error || 'Failed', 'error');
+  });
+}
+
+function editCred(key) {
+  inlinePrompt('Email for ' + key + ':', '').then(email => {
+    if (!email) return;
+    inlinePrompt('Username (if different from email, or leave blank):', '').then(username => {
+      inlinePrompt('Password (leave blank to auto-generate):', '').then(password => {
+        fetch('/api/ats-credentials', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({platform: key, email, username: username || '', password: password || ''})
+        }).then(r => r.json()).then(d => {
+          if (d.ok) location.reload();
+          else showToast(d.error || 'Failed', 'error');
+        });
+      });
+    });
+  });
+}
+
+// ── Resume Upload / Management ──────────────────────────
+let resumeKeys = {{ resume_files.keys() | list | tojson }};
+
+function uploadResume() {
+  const fileInput = document.getElementById('upload-file');
+  const keyInput = document.getElementById('upload-key');
+  if (!fileInput.files.length) {
+    showToast('Select a PDF file first', 'error');
+    return;
+  }
+  const file = fileInput.files[0];
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    showToast('Only PDF files are accepted', 'error');
+    return;
+  }
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('key', keyInput.value.trim());
+
+  fetch('/api/upload-resume', { method: 'POST', body: fd })
+    .then(r => {
+      if (!r.ok) return r.text().then(t => { throw new Error(`Server ${r.status}: ${t}`); });
+      return r.json();
+    })
+    .then(d => {
+      if (d.ok) {
+        showToast(`Resume "${d.key}" uploaded!`, 'success');
+        // Add row to table
+        const tbody = document.querySelector('#resume-table tbody');
+        const tr = document.createElement('tr');
+        tr.dataset.key = d.key;
+        tr.innerHTML = `
+          <td><strong class="resume-key-label">${d.key}</strong></td>
+          <td style="font-family:monospace;font-size:0.85rem">${d.filename}</td>
+          <td>
+            <button class="btn-sm btn-blue" onclick="renameResume('${d.key}')">Rename</button>
+            <button class="btn-sm btn-red" onclick="deleteResume('${d.key}')">Delete</button>
+          </td>`;
+        tbody.appendChild(tr);
+        // Update resumeKeys for routing dropdowns
+        if (!resumeKeys.includes(d.key)) resumeKeys.push(d.key);
+        refreshRoutingDropdowns();
+        // Reset inputs
+        fileInput.value = '';
+        keyInput.value = '';
+      } else {
+        showToast(d.error || 'Upload failed', 'error');
+      }
+    })
+    .catch(err => showToast('Upload failed: ' + err.message, 'error'));
+}
+
+function deleteResume(key) {
+  inlineConfirm(`Delete resume "${key}"? This will also remove it from any routing rules.`).then(yes => {
+    if (!yes) return;
+    inlineConfirm('Also delete the PDF file from disk?').then(deleteFile => {
+      fetch('/api/delete-resume', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({key, delete_file: deleteFile})
+      }).then(r => r.json()).then(d => {
+        if (d.ok) {
+          showToast(`Resume "${key}" removed`, 'success');
+          // Remove table row
+          const row = document.querySelector(`#resume-table tr[data-key="${key}"]`);
+          if (row) row.remove();
+          // Update resumeKeys
+          resumeKeys = resumeKeys.filter(k => k !== key);
+          // Remove any routing rules referencing this key
+          document.querySelectorAll('.routing-rule').forEach(el => {
+            const sel = el.querySelector('.rule-resume');
+            if (sel && sel.value === key) el.remove();
+          });
+          refreshRoutingDropdowns();
+        } else {
+          showToast(d.error || 'Delete failed', 'error');
+        }
+      });
+    });
+  });
+}
+
+function renameResume(key) {
+  inlinePrompt(`New key name for "${key}":`, key).then(newKey => {
+    if (!newKey || newKey === key) return;
+    fetch('/api/rename-resume', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({old_key: key, new_key: newKey})
+    }).then(r => r.json()).then(d => {
+      if (d.ok) {
+        showToast(`Renamed "${key}" to "${d.new_key}"`, 'success');
+        // Update table row
+        const row = document.querySelector(`#resume-table tr[data-key="${key}"]`);
+        if (row) {
+          row.dataset.key = d.new_key;
+          row.querySelector('.resume-key-label').textContent = d.new_key;
+          row.querySelector('.btn-sm.btn-blue').setAttribute('onclick', `renameResume('${d.new_key}')`);
+          row.querySelector('.btn-sm.btn-red').setAttribute('onclick', `deleteResume('${d.new_key}')`);
+        }
+        // Update resumeKeys
+        const idx = resumeKeys.indexOf(key);
+        if (idx !== -1) resumeKeys[idx] = d.new_key;
+        // Update routing dropdowns
+        refreshRoutingDropdowns();
+      } else {
+        showToast(d.error || 'Rename failed', 'error');
+      }
+    });
+  });
+}
+
+function refreshRoutingDropdowns() {
+  // Rebuild <option> lists in all routing rule dropdowns to match current resumeKeys
+  document.querySelectorAll('.rule-resume').forEach(sel => {
+    const current = sel.value;
+    sel.innerHTML = resumeKeys.map(k =>
+      `<option value="${k}" ${k === current ? 'selected' : ''}>${k}</option>`
+    ).join('');
+  });
+}
+
+// ── Resume Routing ──────────────────────────────────────
+function addRoutingRule() {
+  const container = document.getElementById('routing-rules');
+  const div = document.createElement('div');
+  div.className = 'routing-rule';
+  div.style.cssText = 'border:1px solid #334155;border-radius:8px;padding:12px 16px;margin-bottom:10px;background:#1a2332;';
+  const opts = resumeKeys.map(k => `<option value="${k}">${k}</option>`).join('');
+  div.innerHTML = `
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <div>
+        <label style="font-size:0.8rem;color:#718096;">Resume</label><br>
+        <select class="form-control rule-resume" style="width:150px;">${opts}</select>
+      </div>
+      <div style="flex:1;">
+        <label style="font-size:0.8rem;color:#718096;">Title patterns (one per line, regex)</label><br>
+        <textarea class="form-control rule-titles" rows="3" style="font-family:monospace;font-size:0.85rem;" placeholder="\\bcloud\\b&#10;\\bazure\\b"></textarea>
+        <input type="hidden" class="rule-type" value="titles">
+      </div>
+      <div>
+        <button class="btn-sm btn-red" onclick="this.closest('.routing-rule').remove()" style="margin-top:16px;">&#x2715;</button>
+      </div>
+    </div>`;
+  // Insert before the default rule (last one)
+  const rules = container.querySelectorAll('.routing-rule');
+  const lastRule = rules[rules.length - 1];
+  if (lastRule && lastRule.querySelector('.rule-type[value="default"]')) {
+    container.insertBefore(div, lastRule);
+  } else {
+    container.appendChild(div);
+  }
+}
+
+function saveRouting() {
+  const rules = [];
+  document.querySelectorAll('.routing-rule').forEach(el => {
+    const resume = el.querySelector('.rule-resume').value;
+    const type = el.querySelector('.rule-type').value;
+    if (type === 'indian_firm') {
+      rules.push({resume, match: 'indian_firm'});
+    } else if (type === 'default') {
+      rules.push({resume, default: true});
+    } else {
+      const textarea = el.querySelector('.rule-titles');
+      const titles = textarea.value.split('\n').map(s => s.trim()).filter(s => s);
+      if (titles.length > 0) {
+        rules.push({resume, titles});
+      }
+    }
+  });
+  fetch('/api/resume-routing', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({routing: rules})
+  }).then(r => r.json()).then(d => {
+    if (d.ok) showToast('Resume routing saved!', 'success');
+    else showToast(d.error || 'Failed to save', 'error');
+  });
+}
+</script>
+{% endblock %}

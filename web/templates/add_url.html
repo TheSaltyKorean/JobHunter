@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Add Job URL{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Add a Job URL</h1>
+</div>
+
+<div class="card" style="max-width: 600px">
+  <p>Paste a LinkedIn, Indeed, Workday, or any job posting URL below. The app will fetch the description, analyze it, and add it to your queue.</p>
+
+  <form method="POST">
+    <div class="form-group">
+      <label>Job Posting URL</label>
+      <input type="url" name="url" class="form-control" required
+             placeholder="https://www.linkedin.com/jobs/view/...">
+    </div>
+    <button type="submit" class="btn btn-primary">Fetch & Analyze</button>
+  </form>
+</div>
+
+<div class="card" style="max-width: 600px; margin-top: 24px;">
+  <h3>Supported Sites</h3>
+  <ul>
+    <li><strong>LinkedIn</strong> – LinkedIn Easy Apply supported</li>
+    <li><strong>Indeed</strong> – Indeed Apply supported</li>
+    <li><strong>Workday</strong> – Any <code>*.myworkdayjobs.com</code> URL</li>
+    <li><strong>Other sites</strong> – Job is imported and analyzed; application may require manual steps</li>
+  </ul>
+</div>
+
+{% endblock %}

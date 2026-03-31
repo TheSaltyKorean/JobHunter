@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }}{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <div>
+    <a href="{{ url_for('jobs') }}" class="back-link">← Back to Jobs</a>
+    <h1>{{ job.title }}</h1>
+    <p class="subtitle">{{ job.company }} · {{ job.location or 'Location not specified' }}</p>
+  </div>
+  <div class="header-actions">
+    {% if job.url %}
+      <a href="{{ job.url }}" target="_blank" class="btn btn-secondary">View Original ↗</a>
+    {% endif %}
+    {% if job.status in ('new', 'failed', 'queued') %}
+      <button class="btn btn-success" onclick="applyNow({{ job.id }})">&#x25B6; Apply Now</button>
+    {% endif %}
+    {% if job.status == 'new' %}
+      <form method="POST" action="{{ url_for('queue_job', job_id=job.id) }}" style="display:inline">
+        <button class="btn btn-primary">Queue for Later</button>
+      </form>
+      <button class="btn btn-secondary" onclick="updateStatus({{ job.id }}, 'skipped')">Dismiss</button>
+    {% endif %}
+    {% if job.status == 'applied' %}
+      <button class="btn btn-success" onclick="updateStatus({{ job.id }}, 'interview')">&#x1F3AF; Got Interview</button>
+      <button class="btn btn-secondary" onclick="updateStatus({{ job.id }}, 'rejected')">Rejected</button>
+      <button class="btn btn-secondary" onclick="updateStatus({{ job.id }}, 'ghosted')">Ghosted</button>
+    {% endif %}
+    {% if job.status == 'interview' %}
+      <button class="btn btn-success" onclick="updateStatus({{ job.id }}, 'offer')">&#x1F389; Got Offer!</button>
+      <button class="btn btn-secondary" onclick="updateStatus({{ job.id }}, 'rejected')">Rejected</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="two-col">
+  <!-- Left: Job Details -->
+  <div>
+    <div class="card">
+      <h3>Job Info</h3>
+      <table class="info-table">
+        <tr><td>Platform</td><td><span class="badge badge-{{ job.platform }}">{{ job.platform }}</span></td></tr>
+        <tr><td>Status</td><td><span class="status-badge status-{{ job.status }}">{{ job.status }}</span></td></tr>
+        <tr><td>Role Type</td><td>{{ job.role_type or 'unknown' }}</td></tr>
+        <tr><td>Match Score</td>
+            <td><span class="match-badge {% if job.match_score >= 70 %}match-high{% elif job.match_score >= 50 %}match-med{% else %}match-low{% endif %}">
+              {{ job.match_score|int }}%
+            </span></td></tr>
+        <tr><td>Resume to Use</td><td><span class="badge badge-resume">{{ job.resume_type }}</span></td></tr>
+        {% if job.is_indian_firm %}
+        <tr><td>&#x26A0;&#xFE0F; Flag</td><td><span class="badge badge-orange">Indian IT Firm – Screening Resume Used</span><br><small>{{ job.flagged_reason }}</small></td></tr>
+        {% endif %}
+        <tr><td>Salary</td><td>{{ job.salary or 'Not listed' }}</td></tr>
+        <tr><td>Posted</td><td>{{ job.posted_date or 'Unknown' }}</td></tr>
+        <tr><td>Found</td><td>{{ job.found_date[:10] if job.found_date else '–' }}</td></tr>
+        {% if job.applied_date %}
+        <tr><td>Applied</td><td>{{ job.applied_date[:10] }}</td></tr>
+        {% endif %}
+        {% if job.notes %}
+        <tr><td>Notes</td><td>{{ job.notes }}</td></tr>
+        {% endif %}
+      </table>
+    </div>
+
+    {% if job.matched_skills %}
+    <div class="card">
+      <h3>Matched Skills ({{ job.matched_skills|length }})</h3>
+      <div class="skills-cloud">
+        {% for skill in job.matched_skills %}
+          <span class="skill-tag">{{ skill }}</span>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {% if job.qa_pairs %}
+    <div class="card">
+      <h3>Q&A from Application</h3>
+      {% for pair in job.qa_pairs %}
+        <div class="qa-item">
+          <div class="qa-question">{{ pair.q }}</div>
+          <div class="qa-answer">{{ pair.a }}</div>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Right: Description -->
+  <div class="card">
+    <h3>Job Description</h3>
+    {% if job.description %}
+      <div class="job-description">{{ job.description }}</div>
+    {% else %}
+      <p class="empty-state">No description stored. <a href="{{ job.url }}" target="_blank">View on {{ job.platform }}</a>.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function applyNow(id) {
+  fetch(`/jobs/${id}/apply`, {method: 'POST'})
+    .then(r => r.json())
+    .then(d => {
+      showToast(d.message || d.error, d.error ? 'error' : 'success');
+      if (d.manual) setTimeout(() => location.reload(), 500);
+    });
+}
+
+function updateStatus(id, status) {
+  const labels = {interview: 'Mark as got interview?', rejected: 'Mark as rejected?', offer: 'Mark as got offer?', ghosted: 'Mark as ghosted?', skipped: 'Dismiss this job?'};
+  inlineConfirm(labels[status] || `Change status to ${status}?`).then(ok => {
+    if (!ok) return;
+    fetch(`/api/job/${id}/status`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({status: status})
+    }).then(() => location.reload());
+  });
+}
+</script>
+{% endblock %}

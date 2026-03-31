@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Search Jobs{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Search for Jobs</h1>
+</div>
+
+<div class="card" style="max-width: 700px">
+  <form method="POST">
+    <div class="form-group">
+      <label>Job Title Keywords</label>
+      <textarea name="keywords" rows="4" class="form-control" placeholder="One keyword/title per line">{{ '\n'.join(default_keywords) }}</textarea>
+      <small>The app will search each keyword separately and combine results.</small>
+    </div>
+
+    <div class="form-group">
+      <label>Location</label>
+      <input type="text" name="location" class="form-control"
+             value="{{ settings.get('default_location', 'Austin, TX') }}"
+             placeholder="e.g. Austin, TX or Remote">
+    </div>
+
+    <div class="form-group">
+      <label>Platforms to Search</label>
+      <div class="checkbox-group">
+        <label><input type="checkbox" name="platforms" value="linkedin" checked> LinkedIn</label>
+        <label><input type="checkbox" name="platforms" value="indeed" checked> Indeed</label>
+      </div>
+      <small>Search or Wait requires a logged-in session in the browser window that opens.</small>
+    </div>
+
+    <div class="form-group">
+      <button type="submit" class="btn btn-primary">&#x1F50D; Start Search</button>
+    </div>
+  </form>
+</div>
+
+{% endblock %}

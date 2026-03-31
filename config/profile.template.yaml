@@ -1,0 +1,130 @@
+# ============================================================
+# JobApplicationBot – User Profile Configuration
+# ============================================================
+# Copy this file to config/profile.yaml and fill in your details.
+# This file is gitignored — your personal info stays private.
+# ============================================================
+
+contact:
+  first_name: ""
+  last_name: ""
+  email_primary: ""
+  email_screening: ""           # Optional: separate email for staffing firms
+  phone_primary: ""
+  phone_screening: ""           # Optional: separate number for staffing firms
+  city: ""
+  state: ""                     # Two-letter code, e.g. TX
+  state_full: ""                # Full name, e.g. Texas
+  zip: ""
+  linkedin: ""                  # Full URL
+  github: ""                    # Full URL (optional)
+  website: ""                   # Optional
+  authorized_to_work: true
+  requires_sponsorship: false
+  willing_to_relocate: false
+  preferred_work_type: "Hybrid or Remote"   # Remote, Hybrid, On-site, etc.
+
+resumes:
+  # Upload resumes via the web UI at Settings > Resumes & Routing.
+  # Or manually add paths here (relative to the project root):
+  #   executive: "resumes/Your Name - Executive.pdf"
+  #   it_manager: "resumes/Your Name - Tech Leader.pdf"
+  #   cloud: "resumes/Your Name - Cloud.pdf"
+  #   contract: "resumes/Your Name - Contract.pdf"
+
+# Resume routing: maps job title patterns to resume keys.
+# Order matters — first match wins.
+# 'match: indian_firm' is a special rule for auto-detected staffing firms.
+# 'default: true' marks the fallback resume if no title patterns match.
+# Title patterns are case-insensitive Python regex (use \\b for word boundaries).
+resume_routing:
+  - resume: contract
+    match: indian_firm
+  - resume: executive
+    titles:
+      - "\\bvp\\b"
+      - "\\bvice president\\b"
+      - "\\bcio\\b"
+      - "\\bcto\\b"
+      - "\\bchief\\b"
+      - "\\bsvp\\b"
+      - "\\bevp\\b"
+      - "\\bexecutive director\\b"
+  - resume: cloud
+    titles:
+      - "\\bcloud\\b"
+      - "\\bazure\\b"
+      - "\\binfrastructure\\b"
+      - "\\bdevops\\b"
+      - "\\bplatform\\b"
+  - resume: it_manager
+    default: true
+
+education:
+  - school: ""
+    degree_type: ""             # Bachelor's, Master's, Some College, etc.
+    field: ""                   # Computer Science, etc.
+    start_year: 0
+    end_year: 0
+    graduated: false
+
+certifications:
+  - name: ""
+    issuer: ""
+
+skills:
+  # List your skills — these are matched against job descriptions
+  # Group them however you like, they all go into one flat list
+  - "Azure"
+  - "Cloud Architecture"
+  - "DevOps"
+  # ... add all your skills here
+
+work_history:
+  - title: ""
+    company: ""
+    start: ""                   # e.g. "May 2024"
+    end: "Present"
+    current: true
+    years: 0
+    summary: ""
+
+career_summary:
+  years_of_experience: 0
+  management_years: 0
+  budget_managed: ""
+  team_size_max: 0
+
+common_answers:
+  salary_expectation: "0"
+  salary_min: "0"
+  salary_max: "0"
+  hourly_rate: "0"
+  start_date: "2 weeks"
+  notice_period: "2 weeks"
+  willing_to_relocate: "No"
+  remote_preference: "Remote or Hybrid"
+  work_authorization: "Yes, I am authorized to work in the United States"
+  sponsorship_required: "No"
+  veteran_status: "I choose not to disclose"
+  disability_status: "I choose not to disclose"
+  gender: ""
+  ethnicity: "I choose not to disclose"
+  years_of_experience: "0"
+  management_experience: ""
+  largest_team: ""
+  largest_budget: ""
+  highest_education: ""
+  why_interested_template: ""
+  greatest_strength: ""
+  greatest_weakness: ""
+  leadership_style: ""
+
+summaries:
+  executive: ""
+  it_manager: ""
+  cloud: ""
+  contract: ""
+
+awards: []
+activities: []

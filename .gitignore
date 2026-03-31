@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# App data (don't commit personal data or credentials)
+data/
+logs/
+*.db
+*.sqlite
+
+# Config with secrets (personal data, credentials)
+config/settings.json
+config/profile.yaml
+config/ats_credentials.json
+
+# Resume PDFs (personal documents - don't commit)
+resumes/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Playwright browser cache
+.cache/ms-playwright/
+
+# Pending answer files
+data/pending_question.json
+data/answer_*.txt
+
+# Cookies (sensitive)
+data/*_cookies.json

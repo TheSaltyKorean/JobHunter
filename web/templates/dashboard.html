@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+
+<div class="page-header">
+  <h1>Dashboard</h1>
+  <div class="header-actions">
+    <a href="{{ url_for('search') }}" class="btn btn-primary">&#x1F50D; Search Jobs</a>
+    <button class="btn btn-success" onclick="runQueue()">&#x25B6; Apply to Queue</button>
+  </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-number">{{ stats.total }}</div>
+    <div class="stat-label">Total Jobs Found</div>
+  </div>
+  <div class="stat-card stat-green">
+    <div class="stat-number">{{ stats.applied }}</div>
+    <div class="stat-label">Applied</div>
+  </div>
+  <div class="stat-card stat-yellow">
+    <div class="stat-number">{{ stats.queued }}</div>
+    <div class="stat-label">Queued</div>
+  </div>
+  <div class="stat-card stat-blue">
+    <div class="stat-number">{{ stats.new }}</div>
+    <div class="stat-label">New (Review)</div>
+  </div>
+  <div class="stat-card" style="border-left:4px solid #805ad5">
+    <div class="stat-number">{{ stats.interview }}</div>
+    <div class="stat-label">Interviews</div>
+  </div>
+  <div class="stat-card" style="border-left:4px solid #38a169">
+    <div class="stat-number">{{ stats.offer }}</div>
+    <div class="stat-label">Offers</div>
+  </div>
+  <div class="stat-card stat-red">
+    <div class="stat-number">{{ stats.rejected + stats.ghosted }}</div>
+    <div class="stat-label">Rejected / Ghosted</div>
+  </div>
+  <div class="stat-card stat-orange">
+    <div class="stat-number">{{ stats.indian_firm }}</div>
+    <div class="stat-label">Indian Firm (Screened)</div>
+  </div>
+</div>
+
+<!-- Claude Status Banner -->
+<div class="status-banner {% if claude_status.available %}banner-green{% else %}banner-yellow{% endif %}">
+  {% if claude_status.available %}
+    &#x2705; <strong>Claude CLI detected</strong> – Q&A is fully automated
+    <span class="badge">{{ claude_status.version }}</span>
+  {% else %}
+    &#x26A0;&#xFE0F; <strong>Claude CLI not found</strong> – Using clipboard + Claude.ai mode.
+    <a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank">Install Claude Code</a>
+    for full automation.
+  {% endif %}
+</div>
+
+<div class="two-col">
+
+  <!-- New Jobs -->
+  <div class="card">
+    <div class="card-header">
+      <h3>New Jobs to Review</h3>
+      <a href="{{ url_for('jobs', status='new') }}" class="link-sm">View all →</a>
+    </div>
+    {% if recent_new %}
+      <table class="jobs-table">
+        <thead><tr><th>Title</th><th>Company</th><th>Match</th><th>Action</th></tr></thead>
+        <tbody>
+          {% for job in recent_new %}
+          <tr>
+            <td><a href="{{ url_for('job_detail', job_id=job.id) }}">{{ job.title }}</a></td>
+            <td>
+              {{ job.company }}
+              {% if job.is_indian_firm %}<span class="badge badge-orange">&#x1F1EE;&#x1F1F3; Screening</span>{% endif %}
+            </td>
+            <td><span class="match-badge {% if job.match_score >= 70 %}match-high{% elif job.match_score >= 50 %}match-med{% else %}match-low{% endif %}">{{ job.match_score|int }}%</span></td>
+            <td>
+              <form method="POST" action="{{ url_for('queue_job', job_id=job.id) }}" style="display:inline">
+                <button class="btn-sm btn-green">Queue</button>
+              </form>
+              <button class="btn-sm btn-red" onclick="skipJob({{ job.id }})">Skip</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No new jobs. <a href="{{ url_for('search') }}">Run a search</a> or <a href="{{ url_for('add_url') }}">add a URL</a>.</p>
+    {% endif %}
+  </div>
+
+  <!-- Recently Applied -->
+  <div class="card">
+    <div class="card-header">
+      <h3>Recently Applied</h3>
+      <a href="{{ url_for('jobs', status='applied') }}" class="link-sm">View all →</a>
+    </div>
+    {% if recent_applied %}
+      <table class="jobs-table">
+        <thead><tr><th>Title</th><th>Company</th><th>Platform</th><th>Date</th></tr></thead>
+        <tbody>
+          {% for job in recent_applied %}
+          <tr>
+            <td><a href="{{ url_for('job_detail', job_id=job.id) }}">{{ job.title }}</a></td>
+            <td>{{ job.company }}</td>
+            <td><span class="badge badge-{{ job.platform }}">{{ job.platform }}</span></td>
+            <td>{{ job.applied_date[:10] if job.applied_date else '–' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="empty-state">No applications yet.</p>
+    {% endif %}
+  </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+function runQueue() {
+  fetch('/api/run-queue', {method: 'POST'})
+    .then(r => r.json())
+    .then(d => showToast(d.message, 'success'));
+}
+
+function skipJob(id) {
+  // Instant skip — no confirmation needed, same as jobs page dismiss
+  const row = document.querySelector(`button[onclick="skipJob(${id})"]`);
+  if (row) { const tr = row.closest('tr'); if (tr) tr.style.opacity = '0.3'; }
+  fetch(`/api/job/${id}/status`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({status: 'skipped', notes: 'Manually skipped from dashboard'})
+  }).then(() => location.reload());
+}
+</script>
+{% endblock %}

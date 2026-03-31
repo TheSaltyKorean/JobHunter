@@ -1,0 +1,31 @@
+# JobApplicationBot – Python Dependencies
+# Install with:  pip install -r requirements.txt
+
+# Web framework
+flask>=3.0.0
+
+# Browser automation
+playwright>=1.42.0
+
+# Notifications
+plyer>=2.1.0
+win10toast>=0.9; sys_platform == "win32"
+
+# System tray (Windows)
+pystray>=0.19.5; sys_platform == "win32"
+Pillow>=10.0.0
+
+# PDF parsing (for reading resume files if needed)
+pdfplumber>=0.10.0
+
+# Scheduling (optional, for advanced cron-style tasks)
+schedule>=1.2.0
+
+# Anthropic API (optional, backup to Claude CLI)
+anthropic>=0.25.0
+
+# Config
+pyyaml>=6.0
+
+# Utilities
+requests>=2.31.0
