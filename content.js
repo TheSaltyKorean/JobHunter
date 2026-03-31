@@ -445,12 +445,36 @@
       if (btn.closest('#jh-sidebar')) return;
       if (btn.offsetParent === null) return;
       let label = '';
-      // Workday wraps these in data-automation-id="formField-*" with a <label> child
+      // Strategy 1: Workday formField-* wrapper with a <label> child
       const formField = btn.closest('[data-automation-id^="formField"]');
       if (formField) {
         const lbl = formField.querySelector('label');
         if (lbl) label = (lbl.innerText || lbl.textContent || '').trim();
       }
+      // Strategy 2: aria-label on the button (Workday puts question text here)
+      // e.g. "Are you legally authorized... Select One Required"
+      if (!label || /select\s*one/i.test(label)) {
+        const ariaLabel = btn.getAttribute('aria-label') || '';
+        // Strip "Select One", "Required", and trailing whitespace
+        const cleaned = ariaLabel.replace(/select\s*one/gi, '').replace(/\brequired\b/gi, '').trim();
+        if (cleaned.length > 3) label = cleaned;
+      }
+      // Strategy 3: Walk up to find a nearby label, legend, or question text
+      if (!label || /select\s*one/i.test(label)) {
+        let parent = btn.parentElement;
+        for (let depth = 0; depth < 6 && parent; depth++) {
+          // Check for label/legend/span/p elements that contain question text
+          const candidates = parent.querySelectorAll(':scope > label, :scope > legend, :scope > div > label, :scope > span, :scope > p, :scope > div > span, :scope > div > p');
+          for (const c of candidates) {
+            if (c.contains(btn)) continue; // skip if it contains the button
+            const t = (c.innerText || c.textContent || '').trim();
+            if (t.length > 3 && t.length < 200 && !/select\s*one/i.test(t)) { label = t; break; }
+          }
+          if (label && !/select\s*one/i.test(label)) break;
+          parent = parent.parentElement;
+        }
+      }
+      // Strategy 4: fallback to generic extractFieldLabel
       if (!label || /select\s*one/i.test(label)) {
         label = extractFieldLabel(btn);
       }
