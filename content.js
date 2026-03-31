@@ -662,7 +662,7 @@
   // ── Fill work experience sections ──────────────────────────────────────────
   // Many ATS forms have repeating "Work Experience" blocks with fields for
   // title, company, start/end date, description, etc.
-  function fillExperience(workExperience, log, resumeType) {
+  async function fillExperience(workExperience, log, resumeType) {
     if (!workExperience || workExperience.length === 0) return 0;
 
     // Month number → name mapping
@@ -671,108 +671,133 @@
 
     let filled = 0;
 
-    // Strategy: look for groups of fields that form an experience entry.
-    // We match them by looking for "Job Title" / "Company" / "Start Date" patterns
-    // within the same container (fieldset, div, section).
-    const allFields = scanFormFields();
-
-    // Group fields by their closest container (fieldset, form-group, section)
-    function getContainer(el) {
-      let node = el.parentElement;
-      for (let i = 0; i < 8 && node; i++) {
-        const tag = node.tagName?.toLowerCase();
-        const cls = (node.className || '').toLowerCase();
-        if (tag === 'fieldset' || tag === 'section' ||
-            cls.includes('experience') || cls.includes('work-history') ||
-            cls.includes('employment') || cls.includes('form-group') ||
-            cls.includes('repeatable') || cls.includes('entry')) {
-          return node;
-        }
-        node = node.parentElement;
-      }
-      return null;
+    // Build a MM/YYYY date value from month + year, respecting input type
+    function buildDateValue(month, year, inputEl) {
+      if (!month || !year) return '';
+      const mm = String(month).padStart(2, '0');
+      const type = (inputEl?.type || '').toLowerCase();
+      // HTML month input expects YYYY-MM
+      if (type === 'month') return `${year}-${mm}`;
+      // HTML date input expects YYYY-MM-DD
+      if (type === 'date') return `${year}-${mm}-01`;
+      // Most ATS text fields expect MM/YYYY
+      return `${mm}/${year}`;
     }
 
-    // Find experience-related fields
+    // Experience field patterns — order matters for "from"/"to" disambiguation
     const expFieldPatterns = {
-      title:       /job.*title|position.*title|role|title/i,
+      title:       /job.*title|position.*title|^title$|^role$/i,
       company:     /company|employer|organization|firm/i,
       location:    /location|city/i,
       startMonth:  /start.*month|from.*month/i,
       startYear:   /start.*year|from.*year/i,
-      startDate:   /start.*date|from.*date|begin.*date/i,
+      startDate:   /start.*date|from.*date|begin.*date|^from\s*\*?$/i,
       endMonth:    /end.*month|to.*month/i,
       endYear:     /end.*year|to.*year/i,
-      endDate:     /end.*date|to.*date/i,
-      current:     /current|present|still.*work|currently.*work/i,
-      description: /responsibilit|description|duties|summary|accomplishment/i,
+      endDate:     /end.*date|to.*date|^to\s*\*?$/i,
+      current:     /current|present|still.*work|currently.*work|i currently work/i,
+      description: /responsibilit|description|duties|summary|accomplishment|role.*description/i,
     };
 
-    // Try to fill individual experience fields that we can identify
-    let expIndex = 0; // which experience entry we're filling
-    const usedFields = new Set();
+    // Fill one round of experience fields from the current DOM
+    function fillOneEntry(exp) {
+      const allFields = scanFormFields();
+      const usedFields = new Set();
+      let entryFilled = 0;
+      // Track whether we've seen a "from" so the next bare "to" maps correctly
+      let seenFrom = false;
 
-    for (const field of allFields) {
-      if (field.filled) continue;
-      if (usedFields.has(field.element)) continue;
-      const label = field.label.toLowerCase();
-      if (!label) continue;
+      for (const field of allFields) {
+        if (field.filled) continue;
+        if (usedFields.has(field.element)) continue;
+        const label = field.label.toLowerCase().trim();
+        if (!label) continue;
 
-      const exp = workExperience[expIndex];
-      if (!exp) break;
+        for (const [key, rx] of Object.entries(expFieldPatterns)) {
+          if (!rx.test(label)) continue;
 
-      // Match field to experience data
-      for (const [key, rx] of Object.entries(expFieldPatterns)) {
-        if (!rx.test(label)) continue;
-
-        let value = '';
-        switch (key) {
-          case 'title': {
-            const v = exp.variants && resumeType && exp.variants[resumeType];
-            value = (v && v.title) || exp.title || '';
-            break;
+          let value = '';
+          switch (key) {
+            case 'title': {
+              const v = exp.variants && resumeType && exp.variants[resumeType];
+              value = (v && v.title) || exp.title || '';
+              break;
+            }
+            case 'company':     value = exp.company || ''; break;
+            case 'location':    value = exp.location || ''; break;
+            case 'startMonth':  value = exp.startMonth ? MONTH_NAMES[parseInt(exp.startMonth)] : ''; break;
+            case 'startYear':   value = exp.startYear || ''; break;
+            case 'startDate':
+              value = buildDateValue(exp.startMonth, exp.startYear, field.element);
+              seenFrom = true;
+              break;
+            case 'endMonth':
+              if (exp.current) { value = ''; }
+              else { value = exp.endMonth ? MONTH_NAMES[parseInt(exp.endMonth)] : ''; }
+              break;
+            case 'endYear':
+              value = exp.current ? '' : (exp.endYear || '');
+              break;
+            case 'endDate':
+              if (exp.current) { value = ''; }
+              else { value = buildDateValue(exp.endMonth, exp.endYear, field.element); }
+              break;
+            case 'current':
+              if (exp.current) {
+                value = 'Yes';
+              }
+              break;
+            case 'description': {
+              const v = exp.variants && resumeType && exp.variants[resumeType];
+              value = (v && v.description) || exp.description || '';
+              break;
+            }
           }
-          case 'company':     value = exp.company || ''; break;
-          case 'location':    value = exp.location || ''; break;
-          case 'startMonth':  value = exp.startMonth ? MONTH_NAMES[parseInt(exp.startMonth)] : ''; break;
-          case 'startYear':   value = exp.startYear || ''; break;
-          case 'startDate':
-            if (exp.startMonth && exp.startYear) {
-              // Try MM/YYYY or MM/DD/YYYY format
-              const mm = String(exp.startMonth).padStart(2, '0');
-              value = `${mm}/01/${exp.startYear}`;
-            }
-            break;
-          case 'endMonth':
-            if (exp.current) { value = ''; }
-            else { value = exp.endMonth ? MONTH_NAMES[parseInt(exp.endMonth)] : ''; }
-            break;
-          case 'endYear':
-            value = exp.current ? '' : (exp.endYear || '');
-            break;
-          case 'endDate':
-            if (exp.current) { value = ''; }
-            else if (exp.endMonth && exp.endYear) {
-              const mm = String(exp.endMonth).padStart(2, '0');
-              value = `${mm}/01/${exp.endYear}`;
-            }
-            break;
-          case 'current':
-            value = exp.current ? 'Yes' : 'No';
-            break;
-          case 'description': {
-            const v = exp.variants && resumeType && exp.variants[resumeType];
-            value = (v && v.description) || exp.description || '';
+
+          if (value && fillField(field, value)) {
+            logFill(log, `✓ Experience: ${label.substring(0, 40)} → ${value.substring(0, 30)}`, 'success');
+            usedFields.add(field.element);
+            entryFilled++;
             break;
           }
         }
+      }
+      return entryFilled;
+    }
 
-        if (value && fillField(field, value)) {
-          logFill(log, `✓ Experience: ${label.substring(0, 40)} → ${value.substring(0, 30)}`, 'success');
-          usedFields.add(field.element);
-          filled++;
-          break;
+    // Try to click "Add Another" / "Add Work Experience" buttons
+    function clickAddAnother() {
+      const addBtnPatterns = /add\s*(another|more|new|work|experience|entry|position|employment)|add\s*$/i;
+      const btns = document.querySelectorAll('button, a, [role="button"], input[type="button"]');
+      for (const btn of btns) {
+        if (btn.closest('#jh-sidebar')) continue;
+        const text = (btn.textContent || btn.value || '').trim();
+        if (addBtnPatterns.test(text)) {
+          btn.click();
+          logFill(log, `✓ Clicked "${text.substring(0, 30)}" to add experience entry`, 'success');
+          return true;
         }
+      }
+      return false;
+    }
+
+    // Fill first entry from existing fields
+    const firstFilled = fillOneEntry(workExperience[0]);
+    filled += firstFilled;
+
+    // For remaining entries, click "Add Another" and fill
+    for (let i = 1; i < workExperience.length; i++) {
+      if (!clickAddAnother()) {
+        logFill(log, `Could not find "Add Another" button for experience entry ${i + 1}`, 'warn');
+        break;
+      }
+      // Wait for new empty fields to appear in the DOM after clicking Add Another
+      await new Promise(resolve => setTimeout(resolve, 800));
+      const entryFilled = fillOneEntry(workExperience[i]);
+      filled += entryFilled;
+      if (entryFilled === 0) {
+        logFill(log, `No fields found for experience entry ${i + 1}`, 'warn');
+        break;
       }
     }
 
@@ -812,7 +837,7 @@
     const workExp = data.workExperience || [];
     if (workExp.length > 0) {
       logFill(log, `Filling work experience (${workExp.length} entries)...`, 'info');
-      const expFilled = fillExperience(workExp, log, resumeType);
+      const expFilled = await fillExperience(workExp, log, resumeType);
       if (expFilled > 0) logFill(log, `Filled ${expFilled} experience field(s)`, 'success');
     }
 
