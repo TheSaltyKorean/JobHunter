@@ -1697,71 +1697,35 @@ async def apply_to_job(job: dict, settings: dict) -> dict:
 
         page = await context.new_page()
 
-        # Pre-login to Indeed if we have stored credentials
+        # Indeed pre-login: open login page and wait for manual login
+        # (Indeed uses Cloudflare captcha + email verification codes, so
+        # automated login doesn't work — user must log in manually in the
+        # visible browser window)
         if platform == 'indeed':
-            indeed_creds = ats_credentials.get_credentials('indeed')
-            if indeed_creds and indeed_creds.get('email'):
-                try:
-                    logger.info("Logging into Indeed with stored credentials...")
-                    # Use the direct email login URL to skip Google/Apple SSO buttons
-                    await page.goto(
-                        'https://secure.indeed.com/auth?hl=en&co=US&continue=https%3A%2F%2Fwww.indeed.com%2F',
-                        wait_until='domcontentloaded', timeout=20000
-                    )
-                    await _async_delay(2, 3)
+            try:
+                logger.info("Opening Indeed login page — please log in manually...")
+                await page.goto(
+                    'https://secure.indeed.com/auth?hl=en&co=US&continue=https%3A%2F%2Fwww.indeed.com%2F',
+                    wait_until='domcontentloaded', timeout=20000
+                )
+                await _async_delay(2, 3)
 
-                    # Look for "Sign in with email" link if SSO buttons are shown first
-                    email_link = await page.query_selector(
-                        'a:has-text("email"), button:has-text("email"), '
-                        'a:has-text("Sign in with email"), a:has-text("Continue with email"), '
-                        '[data-testid="login-with-email"]'
-                    )
-                    if email_link:
-                        await email_link.click()
-                        await _async_delay(1, 2)
-
-                    # Fill email — try multiple selectors Indeed uses
-                    email_input = await page.query_selector(
-                        'input[name="__email"], input[type="email"][name*="email"], '
-                        'input[id*="email"], input[autocomplete="email"]'
-                    )
-                    if email_input:
-                        await email_input.fill(indeed_creds['email'])
-                        await _async_delay(0.5, 1)
-                        # Submit email
-                        submit_btn = await page.query_selector(
-                            'button[type="submit"]:not([data-testid*="google"]):not([data-testid*="apple"])'
-                        )
-                        if submit_btn:
-                            await submit_btn.click()
-                            await _async_delay(2, 4)
-
-                        # Wait for password field to appear
-                        try:
-                            await page.wait_for_selector(
-                                'input[type="password"]', timeout=10000
-                            )
-                        except Exception:
-                            pass
-
-                        # Fill password
-                        pw_input = await page.query_selector('input[type="password"]')
-                        if pw_input and indeed_creds.get('password'):
-                            await pw_input.fill(indeed_creds['password'])
-                            await _async_delay(0.5, 1)
-                            submit_btn = await page.query_selector(
-                                'button[type="submit"]'
-                            )
-                            if submit_btn:
-                                await submit_btn.click()
-                                await _async_delay(3, 5)
-                                logger.info(f"Indeed login completed, now at: {page.url}")
-                        else:
-                            logger.warning("Indeed password field not found after email submission")
-                    else:
-                        logger.warning("Indeed email input not found on login page")
-                except Exception as e:
-                    logger.warning(f"Indeed pre-login failed (continuing anyway): {e}")
+                # Check if already logged in (redirected to indeed.com homepage)
+                if 'secure.indeed.com' in page.url or 'auth' in page.url:
+                    logger.info("Waiting up to 120s for manual Indeed login (captcha + verification code)...")
+                    for i in range(120):
+                        await asyncio.sleep(1)
+                        current = page.url
+                        if 'secure.indeed.com' not in current and 'auth' not in current:
+                            logger.info(f"Indeed login detected, now at: {current}")
+                            await _async_delay(1, 2)
+                            break
+                        if i == 119:
+                            logger.warning("Indeed login timeout after 120s — continuing anyway")
+                else:
+                    logger.info(f"Already logged into Indeed, at: {page.url}")
+            except Exception as e:
+                logger.warning(f"Indeed pre-login failed (continuing anyway): {e}")
 
         try:
             if platform == 'linkedin':
