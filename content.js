@@ -5,6 +5,8 @@
 (function () {
   'use strict';
 
+  console.log('JobHunter: content script loaded on', location.href);
+
   const JOB_TYPE_LABELS = {
     'cloud':     '☁️ Cloud & Infra',
     'it-mgmt':   '💼 IT Mgmt',

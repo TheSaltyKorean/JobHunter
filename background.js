@@ -486,9 +486,22 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
   // ── Toggle sidebar visibility (from popup) ────────────────────────────────
   if (msg.type === 'TOGGLE_SIDEBAR') {
-    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: 'TOGGLE_SIDEBAR' });
+    chrome.tabs.query({ active: true, currentWindow: true }, async tabs => {
+      if (!tabs[0]) return;
+      const tabId = tabs[0].id;
+      try {
+        // Try sending message to content script first
+        await chrome.tabs.sendMessage(tabId, { type: 'TOGGLE_SIDEBAR' });
+      } catch (e) {
+        // Content script not loaded — inject it programmatically
+        console.log('JobHunter: Content script not found, injecting programmatically...');
+        try {
+          await chrome.scripting.insertCSS({ target: { tabId }, files: ['content.css'] });
+          await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+          console.log('JobHunter: Content script injected successfully');
+        } catch (injectErr) {
+          console.error('JobHunter: Failed to inject content script:', injectErr.message);
+        }
       }
     });
     return false;
@@ -512,9 +525,19 @@ chrome.runtime.onInstalled.addListener(() => {
 // ── Keyboard shortcut to toggle sidebar ─────────────────────────────────────
 chrome.commands?.onCommand?.addListener(command => {
   if (command === 'toggle-sidebar') {
-    chrome.tabs.query({ active: true, currentWindow: true }, tabs => {
-      if (tabs[0]) {
-        chrome.tabs.sendMessage(tabs[0].id, { type: 'TOGGLE_SIDEBAR' });
+    chrome.tabs.query({ active: true, currentWindow: true }, async tabs => {
+      if (!tabs[0]) return;
+      const tabId = tabs[0].id;
+      try {
+        await chrome.tabs.sendMessage(tabId, { type: 'TOGGLE_SIDEBAR' });
+      } catch (e) {
+        // Content script not loaded — inject programmatically
+        try {
+          await chrome.scripting.insertCSS({ target: { tabId }, files: ['content.css'] });
+          await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+        } catch (injectErr) {
+          console.error('JobHunter: Failed to inject:', injectErr.message);
+        }
       }
     });
   }
