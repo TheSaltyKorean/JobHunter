@@ -1,190 +1,188 @@
 /* JobHunter — Content Script Styles */
 
-#jh-fab {
-  position: fixed !important;
-  right: 20px !important;
-  bottom: 80px !important;
-  z-index: 2147483647 !important;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
-  color: white !important;
-  border-radius: 50px !important;
-  padding: 10px 18px !important;
-  cursor: pointer !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 8px !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
-  font-size: 14px !important;
-  font-weight: 700 !important;
-  box-shadow: 0 4px 24px rgba(99, 102, 241, 0.45) !important;
-  transition: all 0.2s ease !important;
-  user-select: none !important;
-  border: none !important;
-  text-decoration: none !important;
+/* ── Save button ──────────────────────────────────────────────────────────── */
+.jh-save-btn {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #6366f1;
+  color: #fff;
+  font-size: 22px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(99,102,241,0.45);
+  z-index: 2147483640;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s;
+  line-height: 1;
 }
-
-#jh-fab:hover {
-  transform: translateY(-2px) !important;
-  box-shadow: 0 8px 30px rgba(99, 102, 241, 0.6) !important;
+.jh-save-btn:hover {
+  background: #4f46e5;
+  transform: scale(1.1);
+  box-shadow: 0 6px 20px rgba(99,102,241,0.55);
 }
+.jh-save-btn:active { transform: scale(0.96); }
+.jh-save-btn.jh-hidden { display: none !important; }
 
-.jh-fab-icon { font-size: 17px !important; line-height: 1 !important; }
-.jh-fab-label { line-height: 1 !important; }
-
-/* ─── Panel ─────────────────────────────────────────────────────────────── */
-#jh-panel {
-  position: fixed !important;
-  right: 20px !important;
-  bottom: 140px !important;
-  z-index: 2147483646 !important;
-  width: 330px !important;
-  background: #ffffff !important;
-  border-radius: 18px !important;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.22), 0 0 0 1px rgba(0,0,0,0.06) !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif !important;
-  overflow: hidden !important;
-  animation: jh-appear 0.2s cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+/* ── Confirm panel ────────────────────────────────────────────────────────── */
+.jh-confirm-panel {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  width: 320px;
+  background: #1e1e2e;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  z-index: 2147483641;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  color: #e2e8f0;
+  overflow: hidden;
+  animation: jh-slide-in 0.18s ease;
 }
+.jh-confirm-panel.jh-hidden { display: none !important; }
 
-@keyframes jh-appear {
-  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+@keyframes jh-slide-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+/* Panel header */
 .jh-panel-header {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
-  padding: 14px 16px !important;
-  display: flex !important;
-  justify-content: space-between !important;
-  align-items: center !important;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: rgba(99,102,241,0.15);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.jh-panel-logo  { font-size: 18px; }
+.jh-panel-title { font-weight: 600; font-size: 13px; flex: 1; }
+.jh-panel-close {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.jh-panel-close:hover { color: #e2e8f0; background: rgba(255,255,255,0.08); }
+
+/* Panel body */
+.jh-panel-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.jh-panel-logo {
-  font-size: 14px !important;
-  font-weight: 800 !important;
-  color: white !important;
-  letter-spacing: -0.3px !important;
+/* Job preview */
+.jh-job-preview {
+  background: rgba(255,255,255,0.05);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.jh-job-title-preview {
+  font-weight: 600;
+  font-size: 13px;
+  color: #e2e8f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.jh-job-co-preview {
+  font-size: 12px;
+  color: #94a3b8;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.jh-close-btn {
-  background: rgba(255,255,255,0.2) !important;
-  border: none !important;
-  color: white !important;
-  cursor: pointer !important;
-  width: 26px !important;
-  height: 26px !important;
-  border-radius: 50% !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  font-size: 13px !important;
-  transition: background 0.15s !important;
-  line-height: 1 !important;
+/* Field group */
+.jh-field-group { display: flex; flex-direction: column; gap: 4px; }
+.jh-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #64748b;
 }
-.jh-close-btn:hover { background: rgba(255,255,255,0.35) !important; }
-
-.jh-panel-body { padding: 16px !important; }
-
-.jh-job-card {
-  background: #f8fafc !important;
-  border-radius: 12px !important;
-  padding: 14px !important;
-  margin-bottom: 14px !important;
-  border: 1px solid #e2e8f0 !important;
+.jh-select {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px;
+  color: #e2e8f0;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 7px 10px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
 }
+.jh-select:focus { border-color: #6366f1; }
+.jh-select option { background: #1e1e2e; }
 
-.jh-job-title {
-  font-size: 15px !important;
-  font-weight: 700 !important;
-  color: #0f172a !important;
-  line-height: 1.3 !important;
-  margin-bottom: 6px !important;
+/* Panel footer */
+.jh-panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid rgba(255,255,255,0.07);
 }
 
-.jh-job-meta {
-  display: flex !important;
-  align-items: center !important;
-  gap: 6px !important;
-  flex-wrap: wrap !important;
-  margin-bottom: 8px !important;
-}
-
-.jh-company {
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  color: #334155 !important;
-}
-
-.jh-sep { color: #94a3b8 !important; font-size: 12px !important; }
-
-.jh-loc {
-  font-size: 12px !important;
-  color: #64748b !important;
-}
-
-.jh-platform-badge {
-  display: inline-block !important;
-  font-size: 10px !important;
-  font-weight: 700 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.5px !important;
-  background: #ede9fe !important;
-  color: #7c3aed !important;
-  border-radius: 5px !important;
-  padding: 2px 8px !important;
-}
-
-.jh-btn-stack {
-  display: flex !important;
-  flex-direction: column !important;
-  gap: 8px !important;
-}
-
+/* Buttons */
 .jh-btn {
-  width: 100% !important;
-  padding: 11px 16px !important;
-  border-radius: 10px !important;
-  border: none !important;
-  cursor: pointer !important;
-  font-size: 13px !important;
-  font-weight: 700 !important;
-  font-family: inherit !important;
-  transition: all 0.15s ease !important;
-  text-align: center !important;
-  line-height: 1 !important;
+  border: none;
+  border-radius: 7px;
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
 }
-
-.jh-btn:disabled { opacity: 0.55 !important; cursor: default !important; transform: none !important; }
-
-.jh-btn-save {
-  background: linear-gradient(135deg, #6366f1, #8b5cf6) !important;
-  color: white !important;
+.jh-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.jh-btn-primary {
+  background: #6366f1;
+  color: #fff;
 }
-.jh-btn-save:hover:not(:disabled) { opacity: 0.9 !important; transform: translateY(-1px) !important; }
-
-.jh-btn-apply {
-  background: #10b981 !important;
-  color: white !important;
+.jh-btn-primary:hover:not(:disabled) { background: #4f46e5; }
+.jh-btn-secondary {
+  background: rgba(255,255,255,0.08);
+  color: #94a3b8;
 }
-.jh-btn-apply:hover { opacity: 0.9 !important; transform: translateY(-1px) !important; }
+.jh-btn-secondary:hover { background: rgba(255,255,255,0.12); }
 
-.jh-btn-dash {
-  background: #f1f5f9 !important;
-  color: #475569 !important;
+/* ── Toast ────────────────────────────────────────────────────────────────── */
+.jh-toast {
+  position: fixed;
+  bottom: 92px;
+  right: 28px;
+  background: #1e293b;
+  color: #e2e8f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  z-index: 2147483642;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 0.2s, transform 0.2s;
+  max-width: 280px;
 }
-.jh-btn-dash:hover { background: #e2e8f0 !important; }
-
-.jh-status {
-  margin-top: 10px !important;
-  font-size: 12px !important;
-  font-weight: 600 !important;
-  text-align: center !important;
-  min-height: 18px !important;
-  padding: 4px !important;
-  border-radius: 6px !important;
-}
-
-.jh-status-success { color: #10b981 !important; background: #f0fdf4 !important; }
-.jh-status-error   { color: #ef4444 !important; background: #fef2f2 !important; }
-.jh-status-warn    { color: #f59e0b !important; background: #fffbeb !important; }
-.jh-status-info    { color: #6366f1 !important; background: #eef2ff !important; }
+.jh-toast-show  { opacity: 1 !important; transform: translateY(0) !important; }
+.jh-toast-warn  { border-left: 3px solid #f59e0b; }
+.jh-toast-error { border-left: 3px solid #ef4444; }
+.jh-toast-success { border-left: 3px solid #10b981; }
