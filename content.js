@@ -1139,12 +1139,8 @@
       for (const field of allFields) {
         // Skip fields already handled by a PREVIOUS entry
         if (experienceHandledElements.has(field.element)) continue;
-        // Allow date fields that have partial/error values to be re-filled
-        if (field.filled) {
-          const existingVal = (field.element.value || '').trim();
-          const isPartialDate = /^\/|error|^mm|^dd|^yyyy/i.test(existingVal) || (existingVal.length > 0 && existingVal.length < 3);
-          if (!isPartialDate) continue;
-        }
+        // Pre-filled fields: allow overwriting if we have experience data to put in
+        // (resume parsers often get fields wrong or truncate them)
         if (usedFields.has(field.element)) continue;
         const label = field.label.toLowerCase().trim();
         if (!label) continue;
@@ -1381,7 +1377,7 @@
       if (labelSample) logFill(log, `Available fields: ${labelSample}`, 'info');
 
       for (const field of allFields) {
-        if (field.filled) continue;
+        // Allow overwriting pre-filled fields (resume parsers often get values wrong)
         if (usedFields.has(field.element)) continue;
         // Skip fields already claimed by experience filler
         if (experienceHandledElements.has(field.element)) continue;
@@ -1525,14 +1521,6 @@
     let skipped = 0;
 
     for (const field of fields) {
-      if (field.filled) {
-        // Debug: log what's being skipped as pre-filled for listbox fields
-        if (field.fieldType === 'workday-listbox') {
-          const rawText = (field.element.textContent || '').trim().substring(0, 40);
-          logFill(log, `⊘ Skipping pre-filled listbox: "${field.label}" (btn: "${rawText}")`, 'info');
-        }
-        skipped++; continue;
-      }
       if (field.fieldType === 'radio' && filledGroups.has(field.element.name)) continue;
 
       // Skip fields that were handled (or attempted) by fillExperience or fillEducation
@@ -1599,7 +1587,13 @@
 
       // C. Track as unknown for Claude API pass
       if (label && label.length > 2) {
-        unknownFields.push(field);
+        // Only send unfilled fields to Claude — pre-filled fields that didn't
+        // match any rule are likely correct from resume parsing
+        if (!field.filled) {
+          unknownFields.push(field);
+        } else {
+          skipped++;
+        }
       }
     }
 
