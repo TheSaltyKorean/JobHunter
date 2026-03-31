@@ -599,6 +599,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     chrome.tabs.query({ active: true, currentWindow: true }, async tabs => {
       if (!tabs[0]) return;
       const tabId = tabs[0].id;
+      const tabUrl = tabs[0].url || '';
+      // Cannot inject into chrome://, edge://, about:, or extension pages
+      if (/^(chrome|edge|about|chrome-extension):\/\//.test(tabUrl)) {
+        console.log('JobHunter: Cannot inject into', tabUrl);
+        return;
+      }
       try {
         // Try sending message to content script first
         await chrome.tabs.sendMessage(tabId, { type: 'TOGGLE_SIDEBAR' });
@@ -638,6 +644,8 @@ chrome.commands?.onCommand?.addListener(command => {
     chrome.tabs.query({ active: true, currentWindow: true }, async tabs => {
       if (!tabs[0]) return;
       const tabId = tabs[0].id;
+      const tabUrl = tabs[0].url || '';
+      if (/^(chrome|edge|about|chrome-extension):\/\//.test(tabUrl)) return;
       try {
         await chrome.tabs.sendMessage(tabId, { type: 'TOGGLE_SIDEBAR' });
       } catch (e) {
