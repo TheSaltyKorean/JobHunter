@@ -1475,7 +1475,14 @@
     let skipped = 0;
 
     for (const field of fields) {
-      if (field.filled) { skipped++; continue; }
+      if (field.filled) {
+        // Debug: log what's being skipped as pre-filled for listbox fields
+        if (field.fieldType === 'workday-listbox') {
+          const rawText = (field.element.textContent || '').trim().substring(0, 40);
+          logFill(log, `⊘ Skipping pre-filled listbox: "${field.label}" (btn: "${rawText}")`, 'info');
+        }
+        skipped++; continue;
+      }
       if (field.fieldType === 'radio' && filledGroups.has(field.element.name)) continue;
 
       // Skip fields that were handled (or attempted) by fillExperience or fillEducation
