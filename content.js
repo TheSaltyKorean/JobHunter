@@ -662,7 +662,7 @@
   // ── Fill work experience sections ──────────────────────────────────────────
   // Many ATS forms have repeating "Work Experience" blocks with fields for
   // title, company, start/end date, description, etc.
-  function fillExperience(workExperience, log) {
+  function fillExperience(workExperience, log, resumeType) {
     if (!workExperience || workExperience.length === 0) return 0;
 
     // Month number → name mapping
@@ -727,7 +727,11 @@
 
         let value = '';
         switch (key) {
-          case 'title':       value = exp.title || ''; break;
+          case 'title': {
+            const v = exp.variants && resumeType && exp.variants[resumeType];
+            value = (v && v.title) || exp.title || '';
+            break;
+          }
           case 'company':     value = exp.company || ''; break;
           case 'location':    value = exp.location || ''; break;
           case 'startMonth':  value = exp.startMonth ? MONTH_NAMES[parseInt(exp.startMonth)] : ''; break;
@@ -756,9 +760,11 @@
           case 'current':
             value = exp.current ? 'Yes' : 'No';
             break;
-          case 'description':
-            value = exp.description || '';
+          case 'description': {
+            const v = exp.variants && resumeType && exp.variants[resumeType];
+            value = (v && v.description) || exp.description || '';
             break;
+          }
         }
 
         if (value && fillField(field, value)) {
@@ -806,7 +812,7 @@
     const workExp = data.workExperience || [];
     if (workExp.length > 0) {
       logFill(log, `Filling work experience (${workExp.length} entries)...`, 'info');
-      const expFilled = fillExperience(workExp, log);
+      const expFilled = fillExperience(workExp, log, resumeType);
       if (expFilled > 0) logFill(log, `Filled ${expFilled} experience field(s)`, 'success');
     }
 

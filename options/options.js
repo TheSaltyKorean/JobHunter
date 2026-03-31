@@ -173,6 +173,13 @@ document.getElementById('save-custom-qa').addEventListener('click', () => {
 });
 
 // ── Work Experience management ──────────────────────────────────────────
+const EXP_RESUME_TYPES = [
+  { key: 'cloud',     label: '☁️ Cloud & Infra' },
+  { key: 'it-mgmt',   label: '💼 IT Mgmt' },
+  { key: 'executive', label: '🏆 Executive' },
+  { key: 'staffing',  label: '🏢 Staffing' },
+];
+
 function loadExperience() {
   chrome.storage.local.get(['workExperience'], r => {
     const list = document.getElementById('exp-list');
@@ -182,20 +189,39 @@ function loadExperience() {
   });
 }
 
+function monthOptions(selected) {
+  return '<option value="">--</option>' +
+    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+      .map((m, i) => `<option value="${i + 1}" ${selected == (i+1) ? 'selected' : ''}>${m}</option>`)
+      .join('');
+}
+
 function addExpEntry(exp = {}, index) {
   const list = document.getElementById('exp-list');
   const num = index !== undefined ? index + 1 : list.children.length + 1;
   const entry = document.createElement('div');
   entry.className = 'exp-entry';
 
-  const months = '<option value="">--</option>' +
-    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-      .map((m, i) => `<option value="${i + 1}" ${exp.startMonth == (i+1) ? 'selected' : ''}>${m}</option>`)
-      .join('');
-  const endMonths = '<option value="">--</option>' +
-    ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-      .map((m, i) => `<option value="${i + 1}" ${exp.endMonth == (i+1) ? 'selected' : ''}>${m}</option>`)
-      .join('');
+  // Build per-resume-type tabs for title/description
+  const variants = exp.variants || {};
+  const tabButtons = EXP_RESUME_TYPES.map((rt, i) =>
+    `<button class="exp-tab-btn ${i === 0 ? 'active' : ''}" data-rt="${rt.key}">${rt.label}</button>`
+  ).join('');
+  const tabPanels = EXP_RESUME_TYPES.map((rt, i) => {
+    const v = variants[rt.key] || {};
+    return `<div class="exp-tab-panel ${i === 0 ? '' : 'exp-tab-hidden'}" data-rt="${rt.key}">
+      <div class="exp-grid">
+        <div class="field full">
+          <label class="field-label">Job Title (${rt.label})</label>
+          <input class="field-input exp-var-title" data-rt="${rt.key}" type="text" value="${escapeHtml(v.title || exp.title || '')}" placeholder="Title as it appears on this resume">
+        </div>
+        <div class="field full">
+          <label class="field-label">Description (${rt.label})</label>
+          <textarea class="field-textarea exp-var-desc" data-rt="${rt.key}" placeholder="Tailor responsibilities for this resume type...">${escapeHtml(v.description || exp.description || '')}</textarea>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
 
   entry.innerHTML = `
     <div class="exp-header">
@@ -205,14 +231,10 @@ function addExpEntry(exp = {}, index) {
     <button class="exp-remove" title="Remove">✕</button>
     <div class="exp-grid">
       <div class="field">
-        <label class="field-label">Job Title</label>
-        <input class="field-input exp-title" type="text" value="${escapeHtml(exp.title || '')}" placeholder="e.g. VP of IT Infrastructure">
-      </div>
-      <div class="field">
         <label class="field-label">Company</label>
         <input class="field-input exp-company" type="text" value="${escapeHtml(exp.company || '')}" placeholder="e.g. Acme Corp">
       </div>
-      <div class="field full">
+      <div class="field">
         <label class="field-label">Location</label>
         <input class="field-input exp-location" type="text" value="${escapeHtml(exp.location || '')}" placeholder="e.g. Fort Lauderdale, FL">
       </div>
@@ -220,14 +242,14 @@ function addExpEntry(exp = {}, index) {
         <label class="field-label">Start / End Date</label>
         <div class="exp-date-row">
           <div class="field">
-            <select class="field-select exp-start-month">${months}</select>
+            <select class="field-select exp-start-month">${monthOptions(exp.startMonth)}</select>
           </div>
           <div class="field">
             <input class="field-input exp-start-year" type="text" value="${escapeHtml(exp.startYear || '')}" placeholder="Year" style="width:70px">
           </div>
           <span style="color:var(--text3);padding-bottom:8px;">→</span>
           <div class="field">
-            <select class="field-select exp-end-month" ${exp.current ? 'disabled' : ''}>${endMonths}</select>
+            <select class="field-select exp-end-month" ${exp.current ? 'disabled' : ''}>${monthOptions(exp.endMonth)}</select>
           </div>
           <div class="field">
             <input class="field-input exp-end-year" type="text" value="${escapeHtml(exp.endYear || '')}" placeholder="Year" style="width:70px" ${exp.current ? 'disabled' : ''}>
@@ -237,12 +259,42 @@ function addExpEntry(exp = {}, index) {
           </label>
         </div>
       </div>
-      <div class="field full">
-        <label class="field-label">Description / Responsibilities</label>
-        <textarea class="field-textarea exp-desc" placeholder="Brief summary of role...">${escapeHtml(exp.description || '')}</textarea>
-      </div>
+    </div>
+    <div class="exp-tabs" style="margin-top:12px">
+      <div class="exp-tab-bar">${tabButtons}</div>
+      ${tabPanels}
     </div>
   `;
+
+  // Tab switching
+  entry.querySelectorAll('.exp-tab-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const rt = btn.dataset.rt;
+      entry.querySelectorAll('.exp-tab-btn').forEach(b => b.classList.remove('active'));
+      entry.querySelectorAll('.exp-tab-panel').forEach(p => p.classList.add('exp-tab-hidden'));
+      btn.classList.add('active');
+      entry.querySelector(`.exp-tab-panel[data-rt="${rt}"]`).classList.remove('exp-tab-hidden');
+    });
+  });
+
+  // Copy-down: when the first tab's title/desc changes, auto-fill empty tabs
+  const firstTitle = entry.querySelector('.exp-var-title[data-rt="cloud"]');
+  const firstDesc  = entry.querySelector('.exp-var-desc[data-rt="cloud"]');
+  if (firstTitle) {
+    firstTitle.addEventListener('blur', () => {
+      entry.querySelectorAll('.exp-var-title').forEach(inp => {
+        if (inp !== firstTitle && !inp.value.trim()) inp.value = firstTitle.value;
+      });
+    });
+  }
+  if (firstDesc) {
+    firstDesc.addEventListener('blur', () => {
+      entry.querySelectorAll('.exp-var-desc').forEach(inp => {
+        if (inp !== firstDesc && !inp.value.trim()) inp.value = firstDesc.value;
+      });
+    });
+  }
 
   entry.querySelector('.exp-remove').addEventListener('click', () => entry.remove());
   entry.querySelector('.exp-current').addEventListener('change', (e) => {
@@ -263,7 +315,6 @@ function addExpEntry(exp = {}, index) {
 function collectExperience() {
   const entries = [];
   document.querySelectorAll('.exp-entry').forEach(entry => {
-    const title      = entry.querySelector('.exp-title').value.trim();
     const company    = entry.querySelector('.exp-company').value.trim();
     const location   = entry.querySelector('.exp-location').value.trim();
     const startMonth = entry.querySelector('.exp-start-month').value;
@@ -271,9 +322,24 @@ function collectExperience() {
     const endMonth   = entry.querySelector('.exp-end-month').value;
     const endYear    = entry.querySelector('.exp-end-year').value.trim();
     const current    = entry.querySelector('.exp-current').checked;
-    const description = entry.querySelector('.exp-desc').value.trim();
+
+    // Collect per-resume-type variants
+    const variants = {};
+    EXP_RESUME_TYPES.forEach(rt => {
+      const titleEl = entry.querySelector(`.exp-var-title[data-rt="${rt.key}"]`);
+      const descEl  = entry.querySelector(`.exp-var-desc[data-rt="${rt.key}"]`);
+      variants[rt.key] = {
+        title:       titleEl ? titleEl.value.trim() : '',
+        description: descEl  ? descEl.value.trim()  : '',
+      };
+    });
+
+    // Use cloud title as the default/legacy title
+    const title = variants.cloud?.title || '';
+    const description = variants.cloud?.description || '';
+
     if (title || company) {
-      entries.push({ title, company, location, startMonth, startYear, endMonth, endYear, current, description });
+      entries.push({ title, company, location, startMonth, startYear, endMonth, endYear, current, description, variants });
     }
   });
   return entries;

@@ -410,6 +410,35 @@
     }
     .exp-remove:hover { background: rgba(239,68,68,0.2); }
 
+    /* ── Experience tab UI ── */
+    .exp-tabs { margin-top: 10px; }
+    .exp-tab-bar {
+      display: flex;
+      gap: 2px;
+      border-bottom: 2px solid var(--border);
+      margin-bottom: 12px;
+    }
+    .exp-tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text2);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: color 0.15s, border-color 0.15s;
+      white-space: nowrap;
+    }
+    .exp-tab-btn:hover { color: var(--text); }
+    .exp-tab-btn.active {
+      color: var(--purple);
+      border-bottom-color: var(--purple);
+    }
+    .exp-tab-panel { display: flex; flex-direction: column; gap: 10px; }
+    .exp-tab-hidden { display: none !important; }
+
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
