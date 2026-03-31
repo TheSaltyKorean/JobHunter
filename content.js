@@ -436,11 +436,21 @@
 
       fields.push({ element: el, label, fieldType, filled: !!(el.value?.trim()) });
     });
+
+    // Workday & other ATS: custom listbox buttons (dropdowns that aren't <select>)
+    document.querySelectorAll('button[aria-haspopup="listbox"]').forEach(btn => {
+      if (btn.closest('#jh-sidebar')) return;
+      if (btn.offsetParent === null) return;
+      const label = extractFieldLabel(btn);
+      const currentText = btn.textContent?.trim() || '';
+      fields.push({ element: btn, label, fieldType: 'workday-listbox', filled: false });
+    });
+
     return fields;
   }
 
   // ── Fill a single field with a value ──────────────────────────────────────
-  function fillField(field, value) {
+  async function fillField(field, value) {
     const el = field.element;
     if (!value) return false;
 
@@ -452,6 +462,9 @@
     }
     if (field.fieldType === 'checkbox') {
       return fillCheckbox(el, value);
+    }
+    if (field.fieldType === 'workday-listbox') {
+      return await fillWorkdayListbox(el, value);
     }
     // text input or textarea
     const existing = (el.value || '').trim();
@@ -569,6 +582,42 @@
       return true;
     }
     return false;
+  }
+
+  // ── Fill Workday custom listbox (button[aria-haspopup="listbox"]) ──────────
+  // Clicks the button to open the listbox, finds the matching option, clicks it
+  function fillWorkdayListbox(btn, value) {
+    const lower = value.toLowerCase().trim();
+    // Click to open the dropdown listbox
+    btn.click();
+    // Wait a tick for the listbox to render, then find and click the option
+    return new Promise(resolve => {
+      setTimeout(() => {
+        // Workday renders a [role="listbox"] with [role="option"] children
+        const listboxes = document.querySelectorAll('[role="listbox"]');
+        for (const listbox of listboxes) {
+          const options = listbox.querySelectorAll('[role="option"]');
+          let best = null;
+          let bestScore = 0;
+          for (const opt of options) {
+            const text = (opt.textContent || '').trim().toLowerCase();
+            if (text === lower) { best = opt; bestScore = 1000; break; }
+            if (text.includes(lower) || lower.includes(text)) {
+              const score = Math.min(text.length, lower.length) / Math.max(text.length, lower.length);
+              if (score > bestScore) { best = opt; bestScore = score; }
+            }
+          }
+          if (best && bestScore > 0.3) {
+            best.click();
+            resolve(true);
+            return;
+          }
+        }
+        // If no listbox found, try closing the dropdown
+        btn.click();
+        resolve(false);
+      }, 300);
+    });
   }
 
   // ── Auto-check consent/agreement checkboxes ────────────────────────────────
@@ -758,6 +807,75 @@
       description: /responsibilit|description|duties|summary|accomplishment|role.*description/i,
     };
 
+    // ── Workday-specific date filler ──
+    // Workday uses custom spinbutton date inputs with data-automation-id
+    // Standard fillField doesn't work — must set aria-valuenow/aria-valuetext
+    function fillWorkdaySpinbutton(input, numericValue) {
+      const val = String(numericValue);
+      // Set value via native setter
+      const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+      if (nativeSet) nativeSet.call(input, val);
+      else input.value = val;
+      // Set ARIA attributes that Workday reads for validation
+      input.setAttribute('aria-valuenow', val);
+      input.setAttribute('aria-valuetext', val);
+      // Dispatch events Workday listens for
+      input.focus();
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      input.dispatchEvent(new Event('blur', { bubbles: true }));
+      input.blur();
+    }
+
+    function fillWorkdayDates(exp) {
+      // Find all date wrappers with data-automation-id="dateInputWrapper"
+      const wrappers = document.querySelectorAll('[data-automation-id="dateInputWrapper"]');
+      let filled = 0;
+      for (const wrapper of wrappers) {
+        // Skip if already handled
+        if (experienceHandledElements.has(wrapper)) continue;
+        // Determine if this is a "From" or "To" date by checking the parent fieldset legend
+        const fieldset = wrapper.closest('fieldset');
+        if (!fieldset) continue;
+        const legend = fieldset.querySelector('legend label, legend');
+        const legendText = (legend?.innerText || '').trim().toLowerCase();
+        const isFrom = /^from\b/.test(legendText);
+        const isTo   = /^to\b/.test(legendText);
+        if (!isFrom && !isTo) continue;
+
+        // Find month and year spinbutton inputs inside this wrapper
+        const monthInput = wrapper.querySelector('[data-automation-id="dateSectionMonth-input"]');
+        const yearInput  = wrapper.querySelector('[data-automation-id="dateSectionYear-input"]');
+        if (!monthInput && !yearInput) continue;
+
+        experienceHandledElements.add(wrapper);
+        if (monthInput) experienceHandledElements.add(monthInput);
+        if (yearInput)  experienceHandledElements.add(yearInput);
+
+        let month, year;
+        if (isFrom) {
+          month = exp.startMonth;
+          year  = exp.startYear;
+        } else if (isTo) {
+          if (exp.current) continue; // skip end date for current job
+          month = exp.endMonth;
+          year  = exp.endYear;
+        }
+
+        if (monthInput && month) {
+          fillWorkdaySpinbutton(monthInput, parseInt(month));
+          logFill(log, `✓ Experience: ${isFrom ? 'From' : 'To'} Month → ${month}`, 'success');
+          filled++;
+        }
+        if (yearInput && year) {
+          fillWorkdaySpinbutton(yearInput, parseInt(year));
+          logFill(log, `✓ Experience: ${isFrom ? 'From' : 'To'} Year → ${year}`, 'success');
+          filled++;
+        }
+      }
+      return filled;
+    }
+
     // Reset the set each time fillExperience runs (fresh scan)
     experienceHandledElements = new Set();
 
@@ -786,7 +904,7 @@
     }
 
     // Fill one round of experience fields from the current DOM
-    function fillOneEntry(exp) {
+    async function fillOneEntry(exp) {
       const allFields = scanFormFields();
       const usedFields = new Set();
       let entryFilled = 0;
@@ -877,7 +995,7 @@
                 usedFields.add(field.element);
                 entryFilled++;
               }
-            } else if (fillField(field, value)) {
+            } else if (await fillField(field, value)) {
               logFill(log, `✓ Experience: ${label.substring(0, 40)} → ${value.substring(0, 30)}`, 'success');
               usedFields.add(field.element);
               entryFilled++;
@@ -928,7 +1046,7 @@
           }
         }
 
-        if (value && fillField(field, value)) {
+        if (value && await fillField(field, value)) {
           logFill(log, `✓ Experience: ${context || '?'} ${label} → ${value}`, 'success');
           usedFields.add(field.element);
           entryFilled++;
@@ -959,8 +1077,10 @@
     }
 
     // Fill first entry from existing fields
-    const firstFilled = fillOneEntry(workExperience[0]);
+    const firstFilled = await fillOneEntry(workExperience[0]);
     filled += firstFilled;
+    // Workday-specific: fill spinbutton date inputs for this entry
+    filled += fillWorkdayDates(workExperience[0]);
 
     // For remaining entries, click "Add Another" and fill
     for (let i = 1; i < workExperience.length; i++) {
@@ -970,9 +1090,11 @@
       }
       // Wait for new empty fields to appear in the DOM after clicking Add Another
       await new Promise(resolve => setTimeout(resolve, 800));
-      const entryFilled = fillOneEntry(workExperience[i]);
+      const entryFilled = await fillOneEntry(workExperience[i]);
       filled += entryFilled;
-      if (entryFilled === 0) {
+      // Workday-specific: fill spinbutton date inputs for this entry
+      filled += fillWorkdayDates(workExperience[i]);
+      if (entryFilled === 0 && filled === 0) {
         logFill(log, `No fields found for experience entry ${i + 1}`, 'warn');
         break;
       }
@@ -1002,7 +1124,7 @@
     // Reset education handled set
     educationHandledElements = new Set();
 
-    function fillOneEduEntry(edu) {
+    async function fillOneEduEntry(edu) {
       const allFields = scanFormFields();
       const usedFields = new Set();
       let entryFilled = 0;
@@ -1036,7 +1158,7 @@
             case 'endYear':   value = edu.endYear || ''; break;
           }
 
-          if (value && fillField(field, value)) {
+          if (value && await fillField(field, value)) {
             logFill(log, `✓ Education: ${label.substring(0, 40)} → ${value.substring(0, 30)}`, 'success');
             usedFields.add(field.element);
             entryFilled++;
@@ -1065,7 +1187,7 @@
       return false;
     }
 
-    const firstFilled = fillOneEduEntry(educationData[0]);
+    const firstFilled = await fillOneEduEntry(educationData[0]);
     filled += firstFilled;
 
     for (let i = 1; i < educationData.length; i++) {
@@ -1074,7 +1196,7 @@
         break;
       }
       await new Promise(resolve => setTimeout(resolve, 800));
-      const entryFilled = fillOneEduEntry(educationData[i]);
+      const entryFilled = await fillOneEduEntry(educationData[i]);
       filled += entryFilled;
       if (entryFilled === 0) break;
     }
@@ -1172,7 +1294,7 @@
         const l = label.toLowerCase();
         // Check if custom question matches the field label
         if (l.includes(q) || q.includes(l) || fuzzyScore(l, q) > 0.6) {
-          if (fillField(field, pair.answer)) {
+          if (await fillField(field, pair.answer)) {
             logFill(log, `✓ ${label} (custom Q&A)`, 'success');
             filled++;
             matchedCustom = true;
@@ -1191,7 +1313,7 @@
       if (match) {
         const value = resolveValue(match.key, profile, qa);
         if (value) {
-          if (fillField(field, value)) {
+          if (await fillField(field, value)) {
             logFill(log, `✓ ${label}`, 'success');
             filled++;
             if (field.fieldType === 'radio') filledGroups.add(field.element.name);
@@ -1218,7 +1340,7 @@
             );
           });
           if (resp?.answer) {
-            if (fillField(field, resp.answer)) {
+            if (await fillField(field, resp.answer)) {
               logFill(log, `✓ ${field.label} (Claude)`, 'success');
               filled++;
               if (field.fieldType === 'radio') filledGroups.add(field.element.name);
