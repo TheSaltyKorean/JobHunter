@@ -20,9 +20,52 @@
   const JOB_TYPE_KEYS = ['cloud', 'it-mgmt', 'executive', 'staffing'];
 
   // ── Extract job info from the current page ─────────────────────────────────
-  function extractJobInfo() {
-    const url      = location.href;
-    const hostname = location.hostname.replace(/^www\./, '');
+
+  // LinkedIn obfuscates all class names, so DOM selectors are unreliable.
+  // The most reliable source is document.title: "Job Title | Company | LinkedIn"
+  // and the URL pattern: /jobs/view/<id>/
+  function extractLinkedInJob() {
+    const url = location.href;
+    const titleParts = document.title.split('|').map(p => p.trim());
+    let title = '';
+    let company = '';
+
+    if (titleParts.length >= 3 && titleParts[titleParts.length - 1] === 'LinkedIn') {
+      // "Job Title | Company Name | LinkedIn"
+      title   = titleParts.slice(0, -2).join(' | ').trim();
+      company = titleParts[titleParts.length - 2].trim();
+    } else if (titleParts.length === 2) {
+      title = titleParts[0];
+    }
+
+    // Skip generic page titles that aren't job listings
+    const genericTitles = ['my jobs', 'jobs', 'job search', 'linkedin'];
+    if (genericTitles.includes(title.toLowerCase())) {
+      title = '';
+      company = '';
+    }
+
+    // Location: walk text nodes looking for "City, ST" pattern near the job detail
+    let loc = '';
+    const locWalker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const cityStateRx = /^[A-Z][a-zA-Z\s]+,\s*[A-Z]{2}(?:\s*\(.*\))?$/;
+    while (locWalker.nextNode()) {
+      const t = locWalker.currentNode.textContent?.trim();
+      if (t && cityStateRx.test(t) && t.length < 60) {
+        const parent = locWalker.currentNode.parentElement;
+        // Make sure it's a small leaf element, not a big container
+        if (parent && parent.children.length === 0) {
+          loc = t;
+          break;
+        }
+      }
+    }
+
+    return { title, company, location: loc, platform: 'LinkedIn', url };
+  }
+
+  function extractGenericJob() {
+    const url = location.href;
 
     let title = '';
     const ldJson = document.querySelector('script[type="application/ld+json"]');
@@ -32,22 +75,33 @@
         title = d.title || d.name || '';
       } catch (_) {}
     }
-    if (!title) title = document.querySelector('h1')?.innerText?.trim() || '';
+    if (!title) {
+      const h1 = document.querySelector('h1');
+      if (h1?.innerText?.trim()) title = h1.innerText.trim();
+    }
     if (!title) title = document.title.split(/[-|–]/)[0].trim();
 
     let company = '';
-    company = document.querySelector('meta[property="og:site_name"]')?.content || '';
+    // Skip og:site_name for generic sites — it often returns the platform name
+    const companySelectors = [
+      '[data-company]','[class*="company-name"]','[class*="CompanyName"]',
+      '[class*="employer"]','[itemprop="hiringOrganization"]',
+      '.jobs-unified-top-card__company-name',
+      '[data-testid="inlineHeader-companyName"]',
+      '[data-testid="company-name"]',
+      '.company-name', '.employer-name',
+    ];
+    for (const s of companySelectors) {
+      const el = document.querySelector(s);
+      if (el?.innerText?.trim()) { company = el.innerText.trim(); break; }
+    }
+    // Fallback to og:site_name only if nothing else found
     if (!company) {
-      const selectors = [
-        '[data-company]','[class*="company-name"]','[class*="CompanyName"]',
-        '[class*="employer"]','[itemprop="hiringOrganization"]',
-        '.jobs-unified-top-card__company-name',
-        '[data-testid="inlineHeader-companyName"]',
-        '.company-name',
-      ];
-      for (const s of selectors) {
-        const el = document.querySelector(s);
-        if (el?.innerText?.trim()) { company = el.innerText.trim(); break; }
+      const ogSite = document.querySelector('meta[property="og:site_name"]')?.content || '';
+      // Only use if it doesn't look like a platform name
+      const platformNames = ['indeed','glassdoor','ziprecruiter','dice','monster','greenhouse','lever','workday'];
+      if (ogSite && !platformNames.some(p => ogSite.toLowerCase().includes(p))) {
+        company = ogSite;
       }
     }
 
@@ -62,6 +116,39 @@
       if (el?.innerText?.trim()) { loc = el.innerText.trim(); break; }
     }
 
+    return { title, company, location: loc, url };
+  }
+
+  // Indeed-specific: document.title is "Job Title - Company - City, ST | Indeed.com"
+  function extractIndeedJob() {
+    const url = location.href;
+    const raw = document.title.replace(/\s*\|\s*Indeed\.com\s*$/i, '').trim();
+    const parts = raw.split(/\s*-\s*/);
+    let title = '', company = '', loc = '';
+    if (parts.length >= 3) {
+      title   = parts[0].trim();
+      company = parts[1].trim();
+      loc     = parts.slice(2).join(' - ').trim();
+    } else if (parts.length === 2) {
+      title   = parts[0].trim();
+      company = parts[1].trim();
+    } else {
+      title = raw;
+    }
+    // Fall back to DOM if title looks empty
+    const generic = extractGenericJob();
+    return {
+      title:    title || generic.title,
+      company:  company || generic.company,
+      location: loc || generic.location,
+      platform: 'Indeed',
+      url,
+    };
+  }
+
+  function extractJobInfo() {
+    const hostname = location.hostname.replace(/^www\./, '');
+
     let platform = hostname;
     if (hostname.includes('linkedin'))         platform = 'LinkedIn';
     else if (hostname.includes('indeed'))      platform = 'Indeed';
@@ -73,7 +160,14 @@
     else if (hostname.includes('icims'))       platform = 'iCIMS';
     else if (hostname.includes('taleo'))       platform = 'Taleo';
 
-    return { title, company, location: loc, platform, url };
+    // Use site-specific extractors where the DOM is unreliable
+    if (hostname.includes('linkedin')) return extractLinkedInJob();
+    if (hostname.includes('indeed'))   return extractIndeedJob();
+
+    // Generic extractor for all other sites
+    const info = extractGenericJob();
+    info.platform = platform;
+    return info;
   }
 
   // ── Toast notification ─────────────────────────────────────────────────────
