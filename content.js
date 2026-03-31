@@ -1403,13 +1403,22 @@
     log.innerHTML = '';
     logFill(log, 'Starting auto-fill...', 'info');
 
-    // Get all data from background
-    const data = await new Promise(resolve => {
-      chrome.runtime.sendMessage(
-        { type: 'GET_AUTOFILL_DATA', resumeType, pageUrl: location.href },
-        resolve
-      );
-    });
+    // Get all data from background — catch extension context invalidated
+    let data;
+    try {
+      data = await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage(
+          { type: 'GET_AUTOFILL_DATA', resumeType, pageUrl: location.href },
+          resp => {
+            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+            else resolve(resp);
+          }
+        );
+      });
+    } catch (e) {
+      logFill(log, '⚠ Extension was reloaded — please refresh the page (F5) and try again.', 'error');
+      return;
+    }
 
     const profile    = data.profile    || {};
     const qa         = data.qa         || {};
