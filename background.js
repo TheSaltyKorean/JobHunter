@@ -142,6 +142,7 @@ const FIELD_RULES = [
   { patterns: ['drug.*test', 'drug.*screen', 'substance.*test'],    key: '_drugTest',      type: 'select' },
   { patterns: ['felony', 'convicted', 'criminal.*record', 'criminal.*history', 'been convicted'], key: '_criminalHistory', type: 'select' },
   { patterns: ['18.*years', 'over.*18', 'age.*18', 'at.*least.*18', 'legally.*age'], key: '_over18', type: 'select' },
+  { patterns: ['resident.*of', 'reside.*in', 'do you live', 'currently.*reside', 'bor(?:o|ou)ughs?'], key: '_residency', type: 'select' },
 ];
 
 // Compile regex once at startup

@@ -459,16 +459,27 @@
         const cleaned = ariaLabel.replace(/select\s*one/gi, '').replace(/\brequired\b/gi, '').trim();
         if (cleaned.length > 3) label = cleaned;
       }
-      // Strategy 3: Walk up to find a nearby label, legend, or question text
+      // Strategy 3: Check any label whose `for` matches button's id or name
+      if (!label || /select\s*one/i.test(label)) {
+        const btnId = btn.id || btn.getAttribute('name') || '';
+        if (btnId) {
+          const lbl = document.querySelector(`label[for="${btnId}"]`);
+          if (lbl) {
+            const t = (lbl.innerText || lbl.textContent || '').trim();
+            if (t.length > 3 && !/select\s*one/i.test(t)) label = t;
+          }
+        }
+      }
+      // Strategy 4: Walk up to find a nearby label, legend, or question text
       if (!label || /select\s*one/i.test(label)) {
         let parent = btn.parentElement;
-        for (let depth = 0; depth < 6 && parent; depth++) {
-          // Check for label/legend/span/p elements that contain question text
-          const candidates = parent.querySelectorAll(':scope > label, :scope > legend, :scope > div > label, :scope > span, :scope > p, :scope > div > span, :scope > div > p');
+        for (let depth = 0; depth < 8 && parent; depth++) {
+          // Check for label/legend/span/p/h elements that contain question text
+          const candidates = parent.querySelectorAll(':scope > label, :scope > legend, :scope > div > label, :scope > span, :scope > p, :scope > div > span, :scope > div > p, :scope > h3, :scope > h4, :scope > div > h3, :scope > div > h4');
           for (const c of candidates) {
             if (c.contains(btn)) continue; // skip if it contains the button
             const t = (c.innerText || c.textContent || '').trim();
-            if (t.length > 3 && t.length < 200 && !/select\s*one/i.test(t)) { label = t; break; }
+            if (t.length > 3 && t.length < 300 && !/select\s*one/i.test(t)) { label = t; break; }
           }
           if (label && !/select\s*one/i.test(label)) break;
           parent = parent.parentElement;
@@ -884,6 +895,7 @@
       '_drugTest':         'Yes',
       '_criminalHistory':  'No',
       '_over18':           'Yes',
+      '_residency':        'No',
     };
     if (key in map) return map[key];
     // Q&A key
