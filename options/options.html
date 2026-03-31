@@ -614,6 +614,10 @@
           <input class="field-input" id="qa-university" type="text" placeholder="e.g. University of Texas">
         </div>
         <div class="field">
+          <label class="field-label">Major / Field of Study</label>
+          <input class="field-input" id="qa-major" type="text" placeholder="e.g. Computer Science">
+        </div>
+        <div class="field">
           <label class="field-label">Graduation Year</label>
           <input class="field-input" id="qa-graduationYear" type="text" placeholder="e.g. 2005">
         </div>
@@ -698,6 +702,24 @@
       <div class="card-footer">
         <span class="saved-msg" id="exp-saved">&#10003; Experience saved</span>
         <button class="btn btn-primary" id="save-exp">Save Experience</button>
+      </div>
+    </div>
+
+    <!-- Education History card -->
+    <div class="card">
+      <div class="card-title">Education</div>
+      <div class="card-subtitle">
+        Add your education history. Auto-Fill uses this to populate education sections
+        on applications (school, degree, field of study, dates).
+      </div>
+
+      <div id="edu-list" class="exp-list"></div>
+
+      <button class="btn btn-ghost" id="add-edu" style="margin-top: 12px;">+ Add Education</button>
+
+      <div class="card-footer">
+        <span class="saved-msg" id="edu-saved">&#10003; Education saved</span>
+        <button class="btn btn-primary" id="save-edu">Save Education</button>
       </div>
     </div>
 

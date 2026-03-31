@@ -67,6 +67,7 @@ const DEFAULT_QA = {
   ethnicity:          'I do not wish to answer',
   educationLevel:     '',
   university:         '',
+  major:              '',
   graduationYear:     '',
   linkedinUrl:        '',
   githubUrl:          '',
@@ -498,12 +499,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const workExperience = await new Promise(resolve => {
         chrome.storage.local.get(['workExperience'], r => resolve(r.workExperience || []));
       });
+      const education = await new Promise(resolve => {
+        chrome.storage.local.get(['education'], r => resolve(r.education || []));
+      });
 
       // Get resume as base64 for the content script
       const defaultType = jobTypes[0]?.key || 'it-mgmt';
       const resumeFile = await getResumeBase64(msg.resumeType || defaultType);
 
-      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, credentials, workExperience, jobTypes, hasClaudeKey: claudeReady });
+      sendResponse({ profile, qa, resumeNames, resumeFile, customQA, credentials, workExperience, education, jobTypes, hasClaudeKey: claudeReady });
     })();
     return true;
   }

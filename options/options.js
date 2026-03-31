@@ -14,13 +14,13 @@ const DEFAULT_QA = {
   startDate: 'Immediately', veteranStatus: 'I am not a protected veteran',
   disabilityStatus: 'I do not wish to answer', gender: 'I do not wish to answer',
   ethnicity: 'I do not wish to answer', educationLevel: '', university: '',
-  graduationYear: '', linkedinUrl: '', githubUrl: '', websiteUrl: '',
+  major: '', graduationYear: '', linkedinUrl: '', githubUrl: '', websiteUrl: '',
 };
 
 const QA_FIELDS = [
   'yearsExperience', 'workAuthorization', 'sponsorship', 'willingToRelocate',
   'desiredSalary', 'startDate', 'veteranStatus', 'disabilityStatus',
-  'gender', 'ethnicity', 'educationLevel', 'university', 'graduationYear',
+  'gender', 'ethnicity', 'educationLevel', 'university', 'major', 'graduationYear',
   'linkedinUrl', 'githubUrl', 'websiteUrl',
 ];
 
@@ -548,6 +548,103 @@ document.getElementById('save-exp').addEventListener('click', () => {
   });
 });
 
+// ── Education History ────────────────────────────────────────────────────
+function addEduEntry(edu, index) {
+  const list = document.getElementById('edu-list');
+  const entry = document.createElement('div');
+  entry.className = 'exp-entry';
+  entry.innerHTML = `
+    <div class="exp-header">
+      <span class="exp-number">${index + 1}</span>
+      <strong>${escapeHtml(edu.school || 'New Education')}</strong>
+      <button class="exp-remove" title="Remove">&times;</button>
+    </div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
+      <div class="field">
+        <label class="field-label">School / University</label>
+        <input class="field-input edu-school" type="text" value="${escapeHtml(edu.school || '')}" placeholder="e.g. University of Texas">
+      </div>
+      <div class="field">
+        <label class="field-label">Degree</label>
+        <input class="field-input edu-degree" type="text" value="${escapeHtml(edu.degree || '')}" placeholder="e.g. Bachelor of Science">
+      </div>
+      <div class="field">
+        <label class="field-label">Field of Study / Major</label>
+        <input class="field-input edu-fieldOfStudy" type="text" value="${escapeHtml(edu.fieldOfStudy || '')}" placeholder="e.g. Computer Science">
+      </div>
+      <div class="field">
+        <label class="field-label">GPA (optional)</label>
+        <input class="field-input edu-gpa" type="text" value="${escapeHtml(edu.gpa || '')}" placeholder="e.g. 3.8">
+      </div>
+    </div>
+    <div style="display:flex; gap:12px; margin-top:8px; align-items:center;">
+      <div>
+        <label class="field-label">From</label>
+        <select class="field-select edu-start-month">${monthOptions(edu.startMonth)}</select>
+        <input class="field-input edu-start-year" type="text" value="${escapeHtml(edu.startYear || '')}" placeholder="Year" style="width:70px">
+      </div>
+      <div>
+        <label class="field-label">To</label>
+        <select class="field-select edu-end-month">${monthOptions(edu.endMonth)}</select>
+        <input class="field-input edu-end-year" type="text" value="${escapeHtml(edu.endYear || '')}" placeholder="Year" style="width:70px">
+      </div>
+    </div>
+  `;
+  entry.querySelector('.exp-remove').addEventListener('click', () => { entry.remove(); renumberEdu(); });
+  list.appendChild(entry);
+}
+
+function renumberEdu() {
+  document.querySelectorAll('#edu-list .exp-entry').forEach((e, i) => {
+    const num = e.querySelector('.exp-number');
+    if (num) num.textContent = i + 1;
+  });
+}
+
+function collectEducation() {
+  const entries = [];
+  document.querySelectorAll('#edu-list .exp-entry').forEach(entry => {
+    const school       = entry.querySelector('.edu-school').value.trim();
+    const degree       = entry.querySelector('.edu-degree').value.trim();
+    const fieldOfStudy = entry.querySelector('.edu-fieldOfStudy').value.trim();
+    const gpa          = entry.querySelector('.edu-gpa').value.trim();
+    const startMonth   = entry.querySelector('.edu-start-month').value;
+    const startYear    = entry.querySelector('.edu-start-year').value.trim();
+    const endMonth     = entry.querySelector('.edu-end-month').value;
+    const endYear      = entry.querySelector('.edu-end-year').value.trim();
+    if (school || degree) {
+      entries.push({ school, degree, fieldOfStudy, gpa, startMonth, startYear, endMonth, endYear });
+    }
+  });
+  return entries;
+}
+
+function loadEducation() {
+  chrome.storage.local.get(['education'], r => {
+    const list = document.getElementById('edu-list');
+    list.innerHTML = '';
+    const entries = r.education || [];
+    if (entries.length === 0) {
+      addEduEntry({}, 0);
+    } else {
+      entries.forEach((edu, i) => addEduEntry(edu, i));
+    }
+  });
+}
+
+document.getElementById('add-edu').addEventListener('click', () => addEduEntry({}, document.querySelectorAll('#edu-list .exp-entry').length));
+
+document.getElementById('save-edu').addEventListener('click', () => {
+  const edu = collectEducation();
+  chrome.storage.local.set({ education: edu }, () => {
+    if (chrome.runtime.lastError) {
+      alert('Save failed: ' + chrome.runtime.lastError.message);
+    } else {
+      showSaved('edu-saved');
+    }
+  });
+});
+
 // ── Claude CLI server config ────────────────────────────────────────────
 function loadClaudeConfig() {
   chrome.storage.local.get(['claudeServerPort'], r => {
@@ -645,5 +742,6 @@ loadSettings();
 loadJobTypes();
 loadCredentials();
 loadExperience();
+loadEducation();
 loadCustomQA();
 loadClaudeConfig();

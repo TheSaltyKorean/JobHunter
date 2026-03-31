@@ -383,12 +383,29 @@
       const parts = labelledBy.split(/\s+/).map(id => document.getElementById(id)?.innerText).filter(Boolean);
       if (parts.length) return parts.join(' ').trim();
     }
+    // 3b. data-automation-id (Workday) — humanize the automation ID
+    const autoId = el.getAttribute('data-automation-id');
+    if (autoId) {
+      const humanized = autoId.replace(/[-_]/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+      if (humanized.length > 2) return humanized;
+    }
     // 4. placeholder
     if (el.placeholder) return el.placeholder.trim();
-    // 5. name/id as fallback (split camelCase / snake_case)
+    // 5. Walk up ancestors looking for a label-like sibling or parent text
+    let parent = el.parentElement;
+    for (let depth = 0; depth < 4 && parent; depth++) {
+      // Check for a label child of the parent (sibling to our element's container)
+      const sibLabel = parent.querySelector(':scope > label, :scope > legend, :scope > [class*="label"]');
+      if (sibLabel && sibLabel !== el) {
+        const text = sibLabel.innerText?.trim();
+        if (text && text.length < 100) return text;
+      }
+      parent = parent.parentElement;
+    }
+    // 6. name/id as fallback (split camelCase / snake_case)
     const raw = el.name || el.id || '';
     if (raw) return raw.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_\-]/g, ' ').trim();
-    // 6. Walk backwards through preceding siblings for text
+    // 7. Walk backwards through preceding siblings for text
     let node = el.previousElementSibling || el.parentElement?.previousElementSibling;
     for (let i = 0; i < 3 && node; i++) {
       const text = node.innerText?.trim();
@@ -437,7 +454,9 @@
       return fillCheckbox(el, value);
     }
     // text input or textarea
-    if (el.value && el.value.trim()) return false; // already filled
+    const existing = (el.value || '').trim();
+    // Allow overwriting partial/error date values (e.g. "/2026", "Error: Invalid Date")
+    if (existing && !/^\/|error|^mm|^dd|^yyyy/i.test(existing)) return false; // already filled
     el.focus();
     // Use native setter to work with React controlled inputs
     const nativeSet = Object.getOwnPropertyDescriptor(
@@ -671,61 +690,71 @@
   }
 
   // ── Main auto-fill ────────────────────────────────────────────────────────
+
+  // Month number → name mapping (shared by experience + education fillers)
+  const MONTH_NAMES = ['','January','February','March','April','May','June',
+    'July','August','September','October','November','December'];
+
+  // Track elements handled by fillExperience/fillEducation so the main loop skips them
+  // MUST be at module scope so runAutoFill can access it
+  let experienceHandledElements = new Set();
+  let educationHandledElements  = new Set();
+
+  // Build a date value from month + year, respecting input type and placeholder
+  function buildDateValue(month, year, inputEl) {
+    if (!year) return '';
+    const mm = month ? String(month).padStart(2, '0') : '';
+    const type = (inputEl?.type || '').toLowerCase();
+    const placeholder = (inputEl?.placeholder || '').toLowerCase();
+
+    // HTML month input expects YYYY-MM
+    if (type === 'month') {
+      return mm ? `${year}-${mm}` : '';
+    }
+    // HTML date input expects YYYY-MM-DD
+    if (type === 'date') {
+      return mm ? `${year}-${mm}-01` : '';
+    }
+    // Check placeholder for format hints
+    if (placeholder.includes('mm/yyyy') || placeholder.includes('mm/yy')) {
+      return mm ? `${mm}/${year}` : '';
+    }
+    if (placeholder.includes('yyyy-mm')) {
+      return mm ? `${year}-${mm}` : '';
+    }
+    if (placeholder.includes('yyyy')) {
+      return mm ? `${mm}/${year}` : String(year);
+    }
+    // Default: MM/YYYY for text inputs
+    return mm ? `${mm}/${year}` : String(year);
+  }
+
   // ── Fill work experience sections ──────────────────────────────────────────
   // Many ATS forms have repeating "Work Experience" blocks with fields for
   // title, company, start/end date, description, etc.
   async function fillExperience(workExperience, log, resumeType) {
     if (!workExperience || workExperience.length === 0) return 0;
 
-    // Month number → name mapping
-    const MONTH_NAMES = ['','January','February','March','April','May','June',
-      'July','August','September','October','November','December'];
-
     let filled = 0;
 
-    // Build a date value from month + year, respecting input type and placeholder
-    function buildDateValue(month, year, inputEl) {
-      if (!year) return '';
-      const mm = month ? String(month).padStart(2, '0') : '';
-      const type = (inputEl?.type || '').toLowerCase();
-      const placeholder = (inputEl?.placeholder || '').toLowerCase();
-
-      // HTML month input expects YYYY-MM
-      if (type === 'month') {
-        return mm ? `${year}-${mm}` : '';
-      }
-      // HTML date input expects YYYY-MM-DD
-      if (type === 'date') {
-        return mm ? `${year}-${mm}-01` : '';
-      }
-      // Check placeholder for format hints
-      if (placeholder.includes('mm/yyyy') || placeholder.includes('mm/yy')) {
-        return mm ? `${mm}/${year}` : '';
-      }
-      if (placeholder.includes('yyyy-mm')) {
-        return mm ? `${year}-${mm}` : '';
-      }
-      // Default: MM/YYYY for text inputs
-      return mm ? `${mm}/${year}` : '';
-    }
-
     // Experience field patterns — order matters for "from"/"to" disambiguation
+    // Broadened for Workday + other ATS: handle aria-labels, data-automation IDs, etc.
     const expFieldPatterns = {
-      title:       /job.*title|position.*title|^title$|^role$/i,
+      title:       /job.*title|position.*title|^title$|^role$|^position$/i,
       company:     /company|employer|organization|firm/i,
       location:    /location|city/i,
       startMonth:  /start.*month|from.*month/i,
       startYear:   /start.*year|from.*year/i,
-      startDate:   /start.*date|from.*date|begin.*date|^from\b/i,
+      startDate:   /start.*date|from.*date|begin.*date|^from\b|^from\s*\*/i,
       endMonth:    /end.*month|to.*month/i,
       endYear:     /end.*year|to.*year/i,
-      endDate:     /end.*date|to.*date|^to\b/i,
-      current:     /current|present|still.*work|currently.*work|i currently work/i,
+      endDate:     /end.*date|to.*date|^to\b|^to\s*\*/i,
+      current:     /current.*work|currently.*work|i currently work|present.*employ|still.*work|work.*here/i,
       description: /responsibilit|description|duties|summary|accomplishment|role.*description/i,
     };
 
-    // Track elements handled by fillExperience so the main loop skips them
-    const experienceHandledElements = new Set();
+    // Reset the set each time fillExperience runs (fresh scan)
+    experienceHandledElements = new Set();
 
     // Fill one round of experience fields from the current DOM
     function fillOneEntry(exp) {
@@ -734,7 +763,12 @@
       let entryFilled = 0;
 
       for (const field of allFields) {
-        if (field.filled) continue;
+        // Allow date fields that have partial/error values to be re-filled
+        if (field.filled) {
+          const existingVal = (field.element.value || '').trim();
+          const isPartialDate = /^\/|error|^mm|^dd|^yyyy/i.test(existingVal) || (existingVal.length > 0 && existingVal.length < 3);
+          if (!isPartialDate) continue;
+        }
         if (usedFields.has(field.element)) continue;
         const label = field.label.toLowerCase().trim();
         if (!label) continue;
@@ -742,6 +776,7 @@
         for (const [key, rx] of Object.entries(expFieldPatterns)) {
           if (!rx.test(label)) continue;
 
+          console.log(`JobHunter: Experience field matched — label="${label}" key=${key} type=${field.element.type} existingValue="${field.element.value || ''}"`);
           // Mark as handled by experience filler regardless of whether we can fill it
           experienceHandledElements.add(field.element);
 
@@ -782,10 +817,32 @@
             }
           }
 
-          if (value && fillField(field, value)) {
-            logFill(log, `✓ Experience: ${label.substring(0, 40)} → ${value.substring(0, 30)}`, 'success');
-            usedFields.add(field.element);
-            entryFilled++;
+          if (value) {
+            // For date fields, clear partial/error values first (Workday pre-fills "/2026" etc.)
+            if ((key === 'startDate' || key === 'endDate') && field.element.value) {
+              const existing = field.element.value.trim();
+              // If existing value looks incomplete/error (e.g. "/2026", "Error:", "MM/YYYY")
+              if (/^\/|error|^mm|^dd|^yyyy/i.test(existing) || existing.length < 3) {
+                const nativeSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+                if (nativeSet) nativeSet.call(field.element, '');
+                else field.element.value = '';
+                field.filled = false;
+              }
+            }
+            // For "current" checkbox — click it directly if it's a checkbox
+            if (key === 'current' && (field.fieldType === 'checkbox' || field.element.type === 'checkbox')) {
+              if (!field.element.checked) {
+                field.element.click();
+                field.element.dispatchEvent(new Event('change', { bubbles: true }));
+                logFill(log, `✓ Experience: ${label.substring(0, 40)} → checked`, 'success');
+                usedFields.add(field.element);
+                entryFilled++;
+              }
+            } else if (fillField(field, value)) {
+              logFill(log, `✓ Experience: ${label.substring(0, 40)} → ${value.substring(0, 30)}`, 'success');
+              usedFields.add(field.element);
+              entryFilled++;
+            }
           } else if (!value) {
             logFill(log, `⚠ Experience: ${label.substring(0, 40)} — no data to fill`, 'warn');
           }
@@ -834,6 +891,107 @@
     return filled;
   }
 
+  // ── Fill education sections ────────────────────────────────────────────────
+  // Similar to fillExperience but for education blocks (School, Degree, etc.)
+  async function fillEducation(educationData, log) {
+    if (!educationData || educationData.length === 0) return 0;
+
+    let filled = 0;
+
+    const eduFieldPatterns = {
+      school:      /school|university|college|institution|^school\s*name/i,
+      degree:      /degree|education.*level|^degree\b/i,
+      fieldOfStudy:/field.*study|major|concentration|discipline|area.*study/i,
+      gpa:         /gpa|grade.*point|cumulative/i,
+      startDate:   /start.*date|from.*date|^from\b|^from\s*\*/i,
+      endDate:     /end.*date|to.*date|^to\b|^to\s*\*|graduat.*date|completion.*date/i,
+      startYear:   /start.*year|from.*year/i,
+      endYear:     /end.*year|to.*year|graduat.*year|year.*graduat|class.*of|completion.*year/i,
+    };
+
+    // Reset education handled set
+    educationHandledElements = new Set();
+
+    function fillOneEduEntry(edu) {
+      const allFields = scanFormFields();
+      const usedFields = new Set();
+      let entryFilled = 0;
+
+      for (const field of allFields) {
+        if (field.filled) continue;
+        if (usedFields.has(field.element)) continue;
+        // Skip fields already claimed by experience filler
+        if (experienceHandledElements.has(field.element)) continue;
+        const label = field.label.toLowerCase().trim();
+        if (!label) continue;
+
+        for (const [key, rx] of Object.entries(eduFieldPatterns)) {
+          if (!rx.test(label)) continue;
+
+          educationHandledElements.add(field.element);
+
+          let value = '';
+          switch (key) {
+            case 'school':       value = edu.school || ''; break;
+            case 'degree':       value = edu.degree || ''; break;
+            case 'fieldOfStudy': value = edu.fieldOfStudy || ''; break;
+            case 'gpa':          value = edu.gpa || ''; break;
+            case 'startDate':
+              value = buildDateValue(edu.startMonth, edu.startYear, field.element);
+              break;
+            case 'endDate':
+              value = buildDateValue(edu.endMonth, edu.endYear, field.element);
+              break;
+            case 'startYear': value = edu.startYear || ''; break;
+            case 'endYear':   value = edu.endYear || ''; break;
+          }
+
+          if (value && fillField(field, value)) {
+            logFill(log, `✓ Education: ${label.substring(0, 40)} → ${value.substring(0, 30)}`, 'success');
+            usedFields.add(field.element);
+            entryFilled++;
+          } else if (!value) {
+            logFill(log, `⚠ Education: ${label.substring(0, 40)} — no data`, 'warn');
+          }
+          break;
+        }
+      }
+      return entryFilled;
+    }
+
+    // Click "Add Education" / "Add Another" type buttons
+    function clickAddEdu() {
+      const addBtnPatterns = /add\s*(another|more|new)?\s*(education|school|degree)|add\s*$/i;
+      const btns = document.querySelectorAll('button, a, [role="button"], input[type="button"]');
+      for (const btn of btns) {
+        if (btn.closest('#jh-sidebar')) continue;
+        const text = (btn.textContent || btn.value || '').trim();
+        if (addBtnPatterns.test(text)) {
+          btn.click();
+          logFill(log, `✓ Clicked "${text.substring(0, 30)}" to add education entry`, 'success');
+          return true;
+        }
+      }
+      return false;
+    }
+
+    const firstFilled = fillOneEduEntry(educationData[0]);
+    filled += firstFilled;
+
+    for (let i = 1; i < educationData.length; i++) {
+      if (!clickAddEdu()) {
+        logFill(log, `Could not find "Add" button for education entry ${i + 1}`, 'warn');
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 800));
+      const entryFilled = fillOneEduEntry(educationData[i]);
+      filled += entryFilled;
+      if (entryFilled === 0) break;
+    }
+
+    return filled;
+  }
+
   async function runAutoFill(resumeType) {
     const section = document.getElementById('jh-fill-status-section');
     const log     = document.getElementById('jh-fill-log');
@@ -871,6 +1029,14 @@
       if (expFilled > 0) logFill(log, `Filled ${expFilled} experience field(s)`, 'success');
     }
 
+    // 3b. Fill education sections
+    const eduData = data.education || [];
+    if (eduData.length > 0) {
+      logFill(log, `Filling education (${eduData.length} entries)...`, 'info');
+      const eduFilled = await fillEducation(eduData, log);
+      if (eduFilled > 0) logFill(log, `Filled ${eduFilled} education field(s)`, 'success');
+    }
+
     // 4. Scan all form fields
     logFill(log, 'Scanning form fields...', 'info');
     const fields = scanFormFields();
@@ -886,15 +1052,16 @@
       if (field.filled) { skipped++; continue; }
       if (field.fieldType === 'radio' && filledGroups.has(field.element.name)) continue;
 
-      // Skip fields that were handled (or attempted) by fillExperience
+      // Skip fields that were handled (or attempted) by fillExperience or fillEducation
       if (experienceHandledElements.has(field.element)) { skipped++; continue; }
+      if (educationHandledElements.has(field.element)) { skipped++; continue; }
 
       const label = field.label;
 
-      // Also skip experience-like labels by text pattern (catches fields from
+      // Also skip experience/education-like labels by text pattern (catches fields from
       // entries we didn't have data for, or labels with error text appended)
       const labelFirst = label.split('\n')[0].trim(); // strip error messages after newline
-      if (/^(from|to|job\s*title|company|employer|role\s*desc|responsibilities|i currently work)\b/i.test(labelFirst)) {
+      if (/^(from|to|job\s*title|company|employer|role\s*desc|responsibilities|i currently work|school|university|degree|field of study|major|gpa)\b/i.test(labelFirst)) {
         skipped++; continue;
       }
 
