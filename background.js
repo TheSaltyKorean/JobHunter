@@ -42,7 +42,15 @@ const FIELD_RULES = [
   // Contact
   { patterns: ['e-?mail', 'email\\s*address'],                      key: '_email',         type: 'input' },
   { patterns: ['phone', 'mobile', 'cell', 'telephone', 'contact\\s*number'], key: '_phone', type: 'input' },
-  { patterns: ['city', 'location', 'address', 'where.*located', 'current.*city'], key: '_location', type: 'input' },
+
+  // Address fields
+  { patterns: ['street.*address', 'address.*line.*1', 'address\\s*1', 'mailing.*address', 'home.*address'], key: '_street', type: 'input' },
+  { patterns: ['address.*line.*2', 'address\\s*2', 'apt', 'suite', 'unit'],  key: '_street2',   type: 'input' },
+  { patterns: ['^city$', 'city\\b', 'current.*city', 'where.*located'],       key: '_city',      type: 'input' },
+  { patterns: ['^state$', 'state\\b', 'province', 'region'],                  key: '_state',     type: 'input' },
+  { patterns: ['zip', 'postal.*code', 'post.*code', 'zip.*code'],             key: '_zip',       type: 'input' },
+  { patterns: ['country', 'country.*resid', 'country.*citizen'],               key: '_country',   type: 'select' },
+  { patterns: ['location', 'current.*location'],                               key: '_location',  type: 'input' },
 
   // Links
   { patterns: ['linkedin', 'linked\\s*in'],                         key: 'linkedinUrl',    type: 'input' },
@@ -79,8 +87,6 @@ const FIELD_RULES = [
   { patterns: ['additional.*info', 'anything.*else', 'comments', 'notes.*recruiter'], key: 'additionalInfo', type: 'textarea' },
   { patterns: ['how.*hear', 'where.*hear', 'how.*find', 'referral.*source', 'source'], key: 'howDidYouHear', type: 'input' },
   { patterns: ['referred.*by', 'referr'],                           key: 'referredBy',     type: 'input' },
-  { patterns: ['country', 'country.*resid', 'country.*citizen'],    key: 'country',        type: 'select' },
-  { patterns: ['state', 'province'],                                 key: 'state',          type: 'select' },
 ];
 
 // Compile regex once at startup

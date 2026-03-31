@@ -59,7 +59,24 @@ def find_claude_cli(override_path=None):
 
 CLAUDE_PATH = None  # Set in main()
 
-SYSTEM_PROMPT = """You are helping fill out a job application. Given the applicant's profile and a question from the application form, provide ONLY the answer text — no explanation, no quotes, no extra formatting. If it's a yes/no or multiple choice question, respond with just the matching option. Keep answers concise (1-3 words for simple fields, 1-2 sentences max for text areas). If you truly cannot determine an answer from the profile, respond with exactly: SKIP"""
+SYSTEM_PROMPT = """You are a job application form filler. You receive a question from a job application and the applicant's profile.
+
+RULES — follow these EXACTLY:
+1. Output ONLY the raw answer value. Nothing else.
+2. NO explanations, NO reasoning, NO "Based on...", NO "Best answer:", NO asterisks, NO markdown.
+3. For yes/no questions: output exactly "Yes" or "No"
+4. For multiple choice: output the exact option text
+5. For text fields: 1-5 words max (e.g. "N/A", "15+", "Bachelor's Degree")
+6. For text areas: 1-2 sentences max, plain text only
+7. If the question doesn't apply or you can't answer: output exactly SKIP
+8. NEVER wrap your answer in quotes or formatting
+
+EXAMPLES:
+Q: "Are you a protected veteran?" → No
+Q: "Years of experience" → 15+
+Q: "How did you hear about us?" → LinkedIn
+Q: "Military unit/department" → N/A
+Q: "Describe your leadership style" → Results-driven leader focused on team development and operational excellence."""
 
 
 class ClaudeHandler(BaseHTTPRequestHandler):
@@ -98,9 +115,9 @@ class ClaudeHandler(BaseHTTPRequestHandler):
 
         # Build command — if the path ends in npx, use "npx claude"
         if CLAUDE_PATH.endswith('npx') or CLAUDE_PATH.endswith('npx.cmd'):
-            cmd = [CLAUDE_PATH, 'claude', '-p', '--no-markdown', prompt]
+            cmd = [CLAUDE_PATH, 'claude', '-p', prompt]
         else:
-            cmd = [CLAUDE_PATH, '-p', '--no-markdown', prompt]
+            cmd = [CLAUDE_PATH, '-p', prompt]
 
         try:
             env = {**os.environ, 'CLAUDE_SYSTEM_PROMPT': SYSTEM_PROMPT}
@@ -110,12 +127,28 @@ class ClaudeHandler(BaseHTTPRequestHandler):
             answer = result.stdout.strip()
             if result.returncode != 0:
                 print(f"  claude CLI error (code {result.returncode}): {result.stderr.strip()}")
-                # Try alternate invocation without --no-markdown
-                cmd_alt = cmd[:-2] + [cmd[-1]]  # remove --no-markdown
-                result = subprocess.run(
-                    cmd_alt, capture_output=True, text=True, timeout=30
-                )
-                answer = result.stdout.strip()
+
+            # Strip markdown formatting if Claude adds it despite the prompt
+            import re
+            if answer:
+                # Remove **bold**, *italic*, ```code``` wrapping
+                answer = re.sub(r'\*\*(.+?)\*\*', r'\1', answer)
+                answer = re.sub(r'\*(.+?)\*', r'\1', answer)
+                answer = re.sub(r'```.*?```', '', answer, flags=re.DOTALL)
+                # Remove "Best answer:" or "Based on..." prefixes
+                answer = re.sub(r'^(?:best answer:|based on[^:]*:|answer:)\s*', '', answer, flags=re.IGNORECASE)
+                # If multi-line, take just the last meaningful line (often the actual answer)
+                lines = [l.strip() for l in answer.strip().splitlines() if l.strip()]
+                if len(lines) > 1:
+                    # Look for a short line that looks like the actual answer
+                    for line in reversed(lines):
+                        if len(line) < 100 and not line.startswith(('Based', 'The ', 'This ', 'Since', 'Given')):
+                            answer = line
+                            break
+                    else:
+                        answer = lines[-1]
+                # Remove leading/trailing quotes
+                answer = answer.strip('"\'').strip()
 
             if not answer:
                 self.send_json(200, {'answer': None, 'error': 'empty response'})

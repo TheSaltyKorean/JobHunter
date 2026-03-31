@@ -491,13 +491,37 @@
 
   function fillCheckbox(el, value) {
     const lower = value.toLowerCase();
-    const shouldCheck = ['yes', 'true', '1', 'agree', 'accept', 'i agree'].some(v => lower.includes(v));
+    const shouldCheck = ['yes', 'true', '1', 'agree', 'accept', 'i agree', 'i consent'].some(v => lower.includes(v));
     if (shouldCheck && !el.checked) {
       el.checked = true;
       el.dispatchEvent(new Event('change', { bubbles: true }));
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('click', { bubbles: true }));
       return true;
     }
     return false;
+  }
+
+  // ── Auto-check consent/agreement checkboxes ────────────────────────────────
+  // These are always checked regardless of Q&A rules — privacy notices, ToS, etc.
+  function autoCheckConsentBoxes(log) {
+    const consentPatterns = /consent|i agree|i acknowledge|i certify|i accept|i confirm|terms|privacy|notice|authorization|voluntary|self.?identification|i have read|i understand/i;
+    let checked = 0;
+    document.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      if (cb.closest('#jh-sidebar')) return;
+      if (cb.checked) return;
+      if (cb.disabled || cb.readOnly) return;
+      const label = extractFieldLabel(cb);
+      if (label && consentPatterns.test(label)) {
+        cb.checked = true;
+        cb.dispatchEvent(new Event('change', { bubbles: true }));
+        cb.dispatchEvent(new Event('input', { bubbles: true }));
+        cb.dispatchEvent(new Event('click', { bubbles: true }));
+        if (log) logFill(log, `✓ Checked: ${label.substring(0, 60)}`, 'success');
+        checked++;
+      }
+    });
+    return checked;
   }
 
   // ── Resume upload ─────────────────────────────────────────────────────────
@@ -554,7 +578,13 @@
       '_fullName':   profile.name || '',
       '_email':      _credentials.email || profile.email || '',
       '_phone':      profile.phone || '',
-      '_location':   profile.location || '',
+      '_street':     profile.street || '',
+      '_street2':    '',
+      '_city':       profile.city || '',
+      '_state':      profile.state || '',
+      '_zip':        profile.zip || '',
+      '_country':    profile.country || 'United States',
+      '_location':   profile.location || ((profile.city || '') + (profile.state ? ', ' + profile.state : '')),
       '_password':   _credentials.password || '',
       '_username':   _credentials.username || _credentials.email || profile.email || '',
     };
@@ -587,11 +617,16 @@
     const customQA = data.customQA || [];
     _credentials   = data.credentials || {};
 
-    // 1. Upload resume
+    // 1. Auto-check consent/agreement checkboxes
+    logFill(log, 'Checking consent boxes...', 'info');
+    const consentCount = autoCheckConsentBoxes(log);
+    if (consentCount > 0) logFill(log, `Checked ${consentCount} consent box(es)`, 'success');
+
+    // 2. Upload resume
     logFill(log, 'Looking for resume upload field...', 'info');
     await uploadResume(data.resumeFile, log);
 
-    // 2. Scan all form fields
+    // 3. Scan all form fields
     logFill(log, 'Scanning form fields...', 'info');
     const fields = scanFormFields();
     logFill(log, `Found ${fields.length} fillable fields`, 'info');

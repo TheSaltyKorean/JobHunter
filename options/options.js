@@ -37,7 +37,11 @@ function loadSettings() {
     document.getElementById('name').value     = p.name     || '';
     document.getElementById('email').value    = p.email    || '';
     document.getElementById('phone').value    = p.phone    || '';
-    document.getElementById('location').value = p.location || '';
+    document.getElementById('street').value   = p.street   || '';
+    document.getElementById('city').value     = p.city     || '';
+    document.getElementById('state').value    = p.state    || '';
+    document.getElementById('zip').value      = p.zip      || '';
+    document.getElementById('country').value  = p.country  || '';
     document.getElementById('linkedin').value = p.linkedin || '';
     document.getElementById('title').value    = p.title    || '';
     document.getElementById('summary').value  = p.summary  || '';
@@ -238,7 +242,12 @@ document.getElementById('save-profile').addEventListener('click', () => {
     name:     document.getElementById('name').value.trim(),
     email:    document.getElementById('email').value.trim(),
     phone:    document.getElementById('phone').value.trim(),
-    location: document.getElementById('location').value.trim(),
+    street:   document.getElementById('street').value.trim(),
+    city:     document.getElementById('city').value.trim(),
+    state:    document.getElementById('state').value.trim(),
+    zip:      document.getElementById('zip').value.trim(),
+    country:  document.getElementById('country').value.trim(),
+    location: (document.getElementById('city').value.trim() + ', ' + document.getElementById('state').value.trim()).replace(/^,\s*|,\s*$/g, ''),
     linkedin: document.getElementById('linkedin').value.trim(),
     title:    document.getElementById('title').value.trim(),
     summary:  document.getElementById('summary').value.trim(),
