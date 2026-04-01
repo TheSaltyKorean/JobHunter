@@ -1019,6 +1019,7 @@
       '_residency':        'No',
       '_usCitizen':        'Yes',
       '_accommodation':    'Yes',
+      '_noContact':        'No',
       '_phoneCountry':     'United States',
       '_blank':            '',
       '_today':            new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
@@ -1099,12 +1100,26 @@
     for (const wrapper of wrappers) {
       if (experienceHandledElements.has(wrapper)) continue;
       if (educationHandledElements.has(wrapper)) continue;
-      const fieldset = wrapper.closest('fieldset');
-      if (!fieldset) continue;
-      const legend = fieldset.querySelector('legend label, legend');
-      const legendText = (legend?.innerText || '').trim().toLowerCase();
-      const isFrom = /^from\b/.test(legendText);
-      const isTo   = /^to\b/.test(legendText);
+
+      let isFrom = false, isTo = false;
+
+      // Strategy 1: Check aria-labelledby for "startDate" or "endDate"
+      const ariaLabelledBy = wrapper.getAttribute('aria-labelledby') || '';
+      const wrapperId = wrapper.id || '';
+      if (/startDate/i.test(ariaLabelledBy) || /startDate/i.test(wrapperId)) isFrom = true;
+      else if (/endDate/i.test(ariaLabelledBy) || /endDate/i.test(wrapperId)) isTo = true;
+
+      // Strategy 2: Closest fieldset with legend containing From/To
+      if (!isFrom && !isTo) {
+        const fieldset = wrapper.closest('fieldset');
+        if (fieldset) {
+          const legend = fieldset.querySelector('legend label, legend');
+          const legendText = (legend?.innerText || legend?.textContent || '').trim().toLowerCase();
+          if (/^from\b/.test(legendText) || /^start\b/.test(legendText)) isFrom = true;
+          else if (/^to\b/.test(legendText) || /^end\b/.test(legendText)) isTo = true;
+        }
+      }
+
       if (!isFrom && !isTo) continue;
 
       const monthInput = wrapper.querySelector('[data-automation-id="dateSectionMonth-input"]');
@@ -1158,7 +1173,7 @@
     const expFieldPatterns = {
       title:       /job.*title|position.*title|^title$|^role$|position\d*$|\bposition\b/i,
       company:     /company|employer|organization|firm/i,
-      location:    /location|city/i,
+      location:    /\blocation\b|work.*city|job.*city/i,
       startMonth:  /start.*month|from.*month/i,
       startYear:   /start.*year|from.*year/i,
       startDate:   /start.*date|from.*date|begin.*date|^from\b|^from\s*\*/i,

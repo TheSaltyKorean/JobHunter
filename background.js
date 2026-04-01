@@ -145,6 +145,7 @@ const FIELD_RULES = [
 
   // Common yes/no questions
   { patterns: ['essential.*dut', 'perform.*dut', 'with.*or.*without.*accommodat', 'accommodat.*essential'], key: '_accommodation', type: 'select' },
+  { patterns: ['ok.*to.*contact', 'may.*we.*contact', 'can.*we.*contact', 'permission.*contact.*employer', 'contact.*supervisor', 'contact.*this.*employer'], key: '_noContact', type: 'select' },
   { patterns: ['previously.*worked', 'previously.*employed', 'former.*employee', 'ever.*worked.*for', 'have you.*worked', 'employed.*with.*us', 'worked.*here.*before'], key: '_previouslyWorked', type: 'select' },
   { patterns: ['non.*compete', 'non-compete', 'restrictive.*covenant', 'non.*disclosure'], key: '_nonCompete', type: 'select' },
   { patterns: ['background.*check', 'consent.*background', 'authorize.*background'], key: '_backgroundCheck', type: 'select' },
