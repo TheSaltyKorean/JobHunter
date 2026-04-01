@@ -158,6 +158,7 @@ const FIELD_RULES = [
   { patterns: ['employee.*id', 'emp.*id', 'badge.*number', 'internal.*id'], key: '_blank', type: 'input' },
   { patterns: ['skills', 'key\\s*skills', 'relevant\\s*skills', 'type.*skill'], key: '_blank', type: 'input' },
   { patterns: ['reason.*leav', 'why.*leav', 'reason.*depart'],       key: '_blank',         type: 'input' },
+  { patterns: ['most.*enjoy', 'position.*enjoy', 'enjoy.*most', 'favorite.*position', 'why.*enjoy'], key: '_blank', type: 'input' },
 
   // Signature date / today's date
   { patterns: ['today.*date', 'signature.*date', 'current.*date', '^date\\s*\\*?$', '^date$', 'mm/dd/yyyy', 'mm-dd-yyyy'], key: '_today', type: 'input' },
