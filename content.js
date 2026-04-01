@@ -1018,6 +1018,8 @@
       '_over18':           'Yes',
       '_residency':        'No',
       '_usCitizen':        'Yes',
+      '_accommodation':    'Yes',
+      '_phoneCountry':     'United States',
       '_blank':            '',
       '_today':            new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }),
       '_todayDay':         String(new Date().getDate()),
@@ -1745,7 +1747,7 @@
 
   // Detect if we're in an ATS iframe (Greenhouse embed, etc.)
   const isInIframe = window.self !== window.top;
-  const isATSFrame = /greenhouse\.io|lever\.co|myworkdayjobs\.com|icims\.com|taleo\.net|smartrecruiters\.com|ashbyhq\.com|bamboohr\.com|jobvite\.com|recruitee\.com|workable\.com|paylocity\.com/i.test(window.location.hostname);
+  const isATSFrame = /greenhouse\.io|lever\.co|myworkdayjobs\.com|icims\.com|taleo\.net|smartrecruiters\.com|ashbyhq\.com|bamboohr\.com|jobvite\.com|recruitee\.com|workable\.com|paylocity\.com|successfactors\.com|sapsf\.eu|sapsf\.com/i.test(window.location.hostname);
 
   async function init() {
     if (document.getElementById('jh-sidebar')) return;

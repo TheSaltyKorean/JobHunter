@@ -89,12 +89,14 @@ const FIELD_RULES = [
 
   // Contact
   { patterns: ['e-?mail', 'email\\s*address'],                      key: '_email',         type: 'input' },
+  { patterns: ['phone.*ext', 'extension', 'ext\\.?$'],              key: '_blank',         type: 'input' },
+  { patterns: ['phone.*country', 'country.*phone', 'country.*code.*phone', 'phone.*country.*code'], key: '_phoneCountry', type: 'select' },
   { patterns: ['phone.*number', 'mobile.*number', 'cell.*number', 'telephone.*number', 'contact\\s*number', 'phone\\b', 'mobile\\b', 'cell\\b', 'telephone\\b'], key: '_phone', type: 'input' },
   { patterns: ['phone.*type', 'phone.*device', 'device.*type', 'type.*phone'], key: '_phoneType', type: 'select' },
 
   // Address fields
   { patterns: ['street.*address', 'address.*line.*1', 'address\\s*1', 'mailing.*address', 'home.*address'], key: '_street', type: 'input' },
-  { patterns: ['address.*line.*2', 'address\\s*2', 'apt', 'suite', 'unit'],  key: '_blank',     type: 'input' },
+  { patterns: ['address.*line.*2', 'address\\s*2', 'apt', 'suite', 'unit\\s*#', 'unit\\s*number', '^unit$'],  key: '_blank',     type: 'input' },
   { patterns: ['county'],                                                      key: '_blank',     type: 'input' },
   { patterns: ['^city$', 'city\\b', 'current.*city', 'where.*located'],       key: '_city',      type: 'input' },
   { patterns: ['^state$', 'state\\b', 'province', 'region'],                  key: '_state',     type: 'select' },
@@ -105,6 +107,8 @@ const FIELD_RULES = [
   // Links
   { patterns: ['linkedin', 'linked\\s*in'],                         key: 'linkedinUrl',    type: 'input' },
   { patterns: ['github'],                                            key: 'githubUrl',      type: 'input' },
+  { patterns: ['twitter', 'x\\.com', '@.*handle'],                   key: '_blank',         type: 'input' },
+  { patterns: ['facebook', 'fb\\.com', 'fb.*profile'],              key: '_blank',         type: 'input' },
   { patterns: ['website', 'portfolio', 'personal.*url', 'blog'],    key: 'websiteUrl',     type: 'input' },
 
   // Work authorization
@@ -140,7 +144,8 @@ const FIELD_RULES = [
   { patterns: ['referred.*by', 'referr'],                           key: '_blank',         type: 'input' },
 
   // Common yes/no questions
-  { patterns: ['previously.*worked', 'previously.*employed', 'former.*employee', 'ever.*worked.*for', 'have you.*worked'], key: '_previouslyWorked', type: 'select' },
+  { patterns: ['essential.*dut', 'perform.*dut', 'with.*or.*without.*accommodat', 'accommodat.*essential'], key: '_accommodation', type: 'select' },
+  { patterns: ['previously.*worked', 'previously.*employed', 'former.*employee', 'ever.*worked.*for', 'have you.*worked', 'employed.*with.*us', 'worked.*here.*before'], key: '_previouslyWorked', type: 'select' },
   { patterns: ['non.*compete', 'non-compete', 'restrictive.*covenant', 'non.*disclosure'], key: '_nonCompete', type: 'select' },
   { patterns: ['background.*check', 'consent.*background', 'authorize.*background'], key: '_backgroundCheck', type: 'select' },
   { patterns: ['drug.*test', 'drug.*screen', 'substance.*test'],    key: '_drugTest',      type: 'select' },

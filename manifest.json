@@ -34,7 +34,12 @@
     "https://*.workable.com/*",
     "https://*.hire.trakstar.com/*",
     "https://careers.*.com/*",
-    "https://jobs.*.com/*"
+    "https://jobs.*.com/*",
+    "https://*.successfactors.com/*",
+    "https://*.sapsf.eu/*",
+    "https://*.sapsf.com/*",
+    "https://*.worley.com/*",
+    "https://*.paylocity.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -61,7 +66,12 @@
         "https://*.bamboohr.com/*",
         "https://*.jobvite.com/*",
         "https://*.recruitee.com/*",
-        "https://*.workable.com/*"
+        "https://*.workable.com/*",
+        "https://*.successfactors.com/*",
+        "https://*.sapsf.eu/*",
+        "https://*.sapsf.com/*",
+        "https://*.worley.com/*",
+        "https://*.paylocity.com/*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],
